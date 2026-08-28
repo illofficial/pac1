@@ -40,57 +40,64 @@ app.post('/download-youtube', async (req, res) => {
   console.log(`Downloading YouTube audio: ${url}`);
 
   try {
-    // Запускаем процесс
-    await new Promise((resolve, reject) => {
-      exec(command, { timeout: 300000 }, (error, stdout, stderr) => { // 5 минут таймаут
-        if (error) {
-          console.error('yt-dlp error:', stderr);
-          reject(new Error(stderr || error.message));
-        } else {
-          resolve();
-        }
-      });
-    });
-
-    // Проверяем, существует ли файл
-    if (!fs.existsSync(outputPath)) {
-      throw new Error('File not created');
-    }
-
-    // Получаем размер файла для лога
-    const stats = fs.statSync(outputPath);
-    console.log(`File size: ${stats.size} bytes`);
-
-    // Отправляем файл клиенту
-    res.setHeader('Content-Type', 'audio/wav');
-    res.setHeader('Content-Disposition', `attachment; filename="${outputFileName}"`);
-    const fileStream = fs.createReadStream(outputPath);
-    fileStream.pipe(res);
-
-    // Удаляем файл после отправки
-    fileStream.on('end', () => {
-      fs.unlink(outputPath, (err) => {
-        if (err) console.error('Error deleting file:', err);
-        else console.log(`Deleted temporary file: ${outputPath}`);
-      });
-    });
-
-    // Если клиент разорвал соединение, тоже удаляем
-    req.on('aborted', () => {
-      if (fs.existsSync(outputPath)) {
-        fs.unlink(outputPath, () => {});
-        console.log(`Deleted file due to abort: ${outputPath}`);
+  // Запускаем процесс
+  await new Promise((resolve, reject) => {
+    exec(command, { timeout: 300000 }, (error, stdout, stderr) => {
+      console.log('stdout:', stdout);
+      console.error('stderr:', stderr);
+      if (error) {
+        console.error('yt-dlp error:', stderr || error.message);
+        reject(new Error(stderr || error.message));
+      } else {
+        resolve();
       }
     });
+  });
 
-  } catch (err) {
-    console.error('Download error:', err.message);
-    // Удаляем файл, если он был создан
-    if (fs.existsSync(outputPath)) {
-      fs.unlinkSync(outputPath);
-    }
-    res.status(500).json({ error: err.message || 'Download failed' });
+  // Проверяем, существует ли файл
+  if (!fs.existsSync(outputPath)) {
+    throw new Error('File not created');
   }
+
+  // Получаем размер файла для лога
+  const stats = fs.statSync(outputPath);
+  console.log(`File size: ${stats.size} bytes`);
+
+  // Проверяем, что файл не пустой
+  if (stats.size < 1024) {
+    throw new Error('Downloaded file is too small (likely an error from YouTube)');
+  }
+
+  // Отправляем файл клиенту
+  res.setHeader('Content-Type', 'audio/wav');
+  res.setHeader('Content-Disposition', `attachment; filename="${outputFileName}"`);
+  const fileStream = fs.createReadStream(outputPath);
+  fileStream.pipe(res);
+
+  // Удаляем файл после отправки
+  fileStream.on('end', () => {
+    fs.unlink(outputPath, (err) => {
+      if (err) console.error('Error deleting file:', err);
+      else console.log(`Deleted temporary file: ${outputPath}`);
+    });
+  });
+
+  // Если клиент разорвал соединение, тоже удаляем
+  req.on('aborted', () => {
+    if (fs.existsSync(outputPath)) {
+      fs.unlink(outputPath, () => {});
+      console.log(`Deleted file due to abort: ${outputPath}`);
+    }
+  });
+
+} catch (err) {
+  console.error('Download error:', err.message);
+  if (fs.existsSync(outputPath)) {
+    fs.unlinkSync(outputPath);
+  }
+  // Отправляем ошибку в JSON
+  res.status(500).json({ error: err.message || 'Download failed' });
+}
 });
 //---
 
