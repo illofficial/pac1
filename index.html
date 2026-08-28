@@ -339,6 +339,20 @@
 </head>
 <body>
 
+<!-- Firebase App (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+<!-- Firebase Auth (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+<!-- Firebase Firestore (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+
+<script>
+  const firebaseConfig = { ... }; // ваш конфиг
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+</script>
+  
 <div class="stage">
   <div class="crt">
     <div class="dots-corner tl"><span></span><span></span><span></span></div>
@@ -474,7 +488,7 @@
   }
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
-
+  
   // ---------------- utils ----------------
   function dbToLin(db) { return Math.pow(10, db / 20); }
   function linToDb(lin) { return 20 * Math.log10(Math.max(Math.abs(lin), 1e-9)); }
