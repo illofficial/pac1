@@ -2320,33 +2320,40 @@
         console.log('Content-Type:', response.headers.get('content-type'));
         console.log('Content-Length:', response.headers.get('content-length'));
 
-        const contentType = response.headers.get('content-type') || '';
-        if (!contentType.includes('audio/wav') && !contentType.includes('audio/')) {
-          const text = await response.text();
-          throw new Error('Server returned non-audio: ' + text.slice(0, 200));
-        }
-    
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Download failed');
+          let errorMsg = 'Download failed';
+          try {
+            const errorData = await response.json();
+            if (errorData.error) errorMsg = errorData.error;
+          } catch (_) {
+            errorMsg = await response.text() || errorMsg;
+          }
+          throw new Error(errorMsg);
         }
     
-        const blob = await response.blob();
-        console.log('Blob type:', blob.type);
-        console.log('Blob size:', blob.size);
-        
-        // Если это не аудио, прочитаем как текст (ошибка)
-        if (!blob.type.includes('audio')) {
-          const text = await blob.text();
-          console.error('Server returned non-audio:', text);
-          let errorMsg = 'Server returned an error';
+        // Проверяем Content-Type
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('audio/')) {
+          // Читаем тело как текст (это может быть JSON ошибка)
+          const text = await response.text();
+          console.error('Server returned non-audio body:', text);
+          let errorMsg = 'Server returned non-audio response';
           try {
             const json = JSON.parse(text);
             if (json.error) errorMsg = json.error;
-          } catch (_) {}
+          } catch (_) {
+            if (text.trim()) errorMsg = text.slice(0, 200);
+            else errorMsg = 'Empty response from server';
+          }
           throw new Error(errorMsg);
         }
-        const arrayBuffer = await blob.arrayBuffer();
+    
+        // Получаем blob и проверяем размер
+        const blob = await response.blob();
+        console.log('Blob size:', blob.size);
+        if (blob.size === 0) {
+          throw new Error('Server returned empty audio file');
+        }
     
         // ---------- ДАЛЬШЕ ИДЁТ ТА ЖЕ ЛОГИКА, ЧТО И ДЛЯ ОБЫЧНОЙ ССЫЛКИ ----------
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
