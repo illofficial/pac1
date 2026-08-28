@@ -359,6 +359,26 @@
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
   const db = firebase.firestore();
+
+  // ----- СЛЕЖЕНИЕ ЗА СОСТОЯНИЕМ АВТОРИЗАЦИИ -----
+  auth.onAuthStateChanged((user) => {
+    if (user) {
+      // Пользователь вошёл
+      showScreen('input');
+      // Сбросим лимит для удобства (если залогинился)
+      resetUsage();
+    } else {
+      // Пользователь не вошёл – показываем экран входа, если лимит исчерпан
+      if (isLimitReached()) {
+        showScreen('login');
+        document.getElementById('login-error').textContent =
+          '⚠ You\'ve used 3 free conversions. Sign in to continue!';
+        document.getElementById('login-error').classList.add('show');
+      } else {
+        showScreen('input');
+      }
+    }
+  });
 </script>
   
 <div class="stage">
@@ -2181,6 +2201,59 @@
 
   //-----------------
 
+  // ----- ОБРАБОТЧИКИ ЛОГИНА И РЕГИСТРАЦИИ -----
+  const loginBtn = document.getElementById('login-btn');
+  const signupBtn = document.getElementById('signup-btn');
+  const loginEmail = document.getElementById('login-email');
+  const loginPassword = document.getElementById('login-password');
+  const loginError = document.getElementById('login-error');
+
+  loginBtn.addEventListener('click', async () => {
+    const email = loginEmail.value;
+    const password = loginPassword.value;
+    if (!email || !password) {
+      loginError.textContent = '⚠ Please fill in both fields.';
+      loginError.classList.add('show');
+      return;
+    }
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+      resetUsage(); // сбрасываем счётчик после входа
+      loginError.classList.remove('show');
+      showScreen('input');
+    } catch (err) {
+      loginError.textContent = err.message;
+      loginError.classList.add('show');
+    }
+  });
+
+  signupBtn.addEventListener('click', async () => {
+    const email = loginEmail.value;
+    const password = loginPassword.value;
+    if (!email || !password) {
+      loginError.textContent = '⚠ Please fill in both fields.';
+      loginError.classList.add('show');
+      return;
+    }
+    try {
+      const userCred = await auth.createUserWithEmailAndPassword(email, password);
+      // Создаём запись в Firestore
+      await db.collection('users').doc(userCred.user.uid).set({
+        email: userCred.user.email,
+        subscriptionStatus: 'free',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      resetUsage();
+      loginError.classList.remove('show');
+      showScreen('input');
+    } catch (err) {
+      loginError.textContent = err.message;
+      loginError.classList.add('show');
+    }
+  });
+  
+  //-----------------
+
   document.getElementById('signup-now-link')?.addEventListener('click', (e) => {
       e.preventDefault();
       showScreen('login');
@@ -2235,8 +2308,8 @@
       inputError.classList.add('show');
       return;
     }
-    if(url && isLikelyYoutubePage(url)){
-      // Отправляем запрос на сервер для скачивания
+    
+    if (url && isLikelyYoutubePage(url)) {
       try {
         setProgress(5);
         const response = await fetch('https://pac1.onrender.com/download-youtube', {
@@ -2250,11 +2323,10 @@
           throw new Error(errorData.error || 'Download failed');
         }
     
-        // Получаем файл как Blob
         const blob = await response.blob();
-        // Дальше обрабатываем blob как обычный файл
-        // Используем ту же логику, что и для fileInput
         const arrayBuffer = await blob.arrayBuffer();
+    
+        // ---------- ДАЛЬШЕ ИДЁТ ТА ЖЕ ЛОГИКА, ЧТО И ДЛЯ ОБЫЧНОЙ ССЫЛКИ ----------
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         const actx = new AudioCtx();
         let audioBuffer;
@@ -2264,26 +2336,116 @@
           throw new Error('Could not decode audio from YouTube');
         }
     
-        // Получаем каналы
+        if (audioBuffer.duration > 600) {
+          throw new Error('track is longer than 10 minutes (' + Math.round(audioBuffer.duration / 60) + ' min).');
+        }
+    
+        const sampleRate = audioBuffer.sampleRate;
         const leftCopy = Float32Array.from(audioBuffer.getChannelData(0));
         const rightCopy = audioBuffer.numberOfChannels > 1 ? Float32Array.from(audioBuffer.getChannelData(1)) : Float32Array.from(audioBuffer.getChannelData(0));
     
-        // Дальше идёт обработка через MasteringChain (как в вашем коде)
-        // ... (код, который у вас идёт после декодирования)
-        // ВАЖНО: пропустите часть с загрузкой по ссылке или файлом, так как мы уже имеем audioBuffer
+        setProgress(16);
     
-        // Продолжайте обработку как обычно
-        // Например:
-        // const result = await window.MasteringChain.processAudioAsync(...)
-        // ...
-        // и показ экрана win
+        if (!window.MasteringChain) {
+          throw new Error('the DSP module failed to load on the page.');
+        }
+    
+        const result = await window.MasteringChain.processAudioAsync(
+          leftCopy, rightCopy, sampleRate, { genre: selectedGenre },
+          (pct) => setProgress(16 + (pct / 100) * 84)
+        );
+    
+        setProgress(100);
+    
+        // --- Сборка WAV и отображение результатов (копия из основного блока) ---
+        const wavBuffer = encodeWav24(result.left, result.right, sampleRate);
+        const wavBlob = new Blob([wavBuffer], { type: 'audio/wav' });
+        const wavUrl = trackUrl(URL.createObjectURL(wavBlob));
+        const outName = 'youtube_audio_enhanced.wav';
+    
+        let cachedDataUri = null;
+        function getDataUri() {
+          if (cachedDataUri === null) cachedDataUri = arrayBufferToDataUri(wavBuffer);
+          return cachedDataUri;
+        }
+        function triggerDownload() {
+          try {
+            const a = document.createElement('a');
+            a.href = wavUrl; a.download = outName;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            return true;
+          } catch (e) {}
+          try {
+            const a = document.createElement('a');
+            a.href = getDataUri(); a.download = outName;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            return true;
+          } catch (e) {}
+          try { window.open(getDataUri(), '_blank'); return true; } catch (e) {}
+          return false;
+        }
+    
+        downloadBtn.href = wavUrl;
+        downloadBtn.download = outName;
+        downloadBtn.onclick = (e) => { e.preventDefault(); triggerDownload(); };
+        fileNameOut.textContent = outName;
+        if (downloadFallback) {
+          downloadFallback.onclick = (e) => {
+            e.preventDefault();
+            try {
+              const a = document.createElement('a');
+              a.href = getDataUri(); a.download = outName;
+              document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            } catch (err) {
+              window.open(getDataUri(), '_blank');
+            }
+          };
+        }
+    
+        // Аудио для прослушивания
+        const origObjUrl = trackUrl(URL.createObjectURL(new Blob([arrayBuffer], { type: 'audio/mpeg' }))); // исходный blob
+        origAudio.src = origObjUrl;
+        masteredAudio.src = wavUrl;
+        origMeta.textContent = Math.round(audioBuffer.duration) + 's · ' + sampleRate + 'Hz';
+        masteredMeta.textContent = Math.round(audioBuffer.duration) + 's · ' + sampleRate + 'Hz · 24-bit WAV';
+    
+        drawWave(waveOrig, leftCopy, rightCopy, '#5959ff');
+        drawWave(waveMastered, result.left, result.right, '#ffd400');
+    
+        const m = result.meta;
+        statsBlock.innerHTML = [
+          ['genre', m.genreLabel],
+          ['mode', m.mode + (m.mode === 'edm' && m.edmPreAttenDb ? ' (−3 dB pre-attenuation applied)' : '')],
+          ['density score', fmt(m.densityScore, 2) + ' (0=sparse, 1=dense)'],
+          ['source RMS', fmt(m.analysis.rmsDb, 1) + ' dB'],
+          ['source crest factor', fmt(m.analysis.crestFactorDb, 1) + ' dB'],
+          ['intensity scale', fmt(m.intensityScale, 2)],
+          ['headroom / pre-gain applied', fmt(m.headroomAppliedGainDb, 2) + ' dB'],
+          ['original LUFS (before processing)', fmt(m.originalLufs, 2) + ' LUFS'],
+          ['LUFS before loudness stage', fmt(m.lufsBefore, 2) + ' LUFS'],
+          ['final LUFS', fmt(m.lufsAfter, 2) + ' LUFS (target ' + fmt(m.targetLUFS, 1) + ')'],
+          ['loudness gain applied', fmt(m.loudnessGainDb, 2) + ' dB'],
+          ['limiter max gain reduction', fmt(m.limiterGainReductionDb, 2) + ' dB'],
+          ['final true peak', fmt(m.truePeakAfterDb, 2) + ' dBTP (ceiling ' + m.truePeakCeilingDb + ')'],
+        ].map(([k, v]) => `<div><span class="k">${k}:</span> <span class="v">${v}</span></div>`).join('');
+    
+        // Счётчик (если не залогинен)
+        if (!auth.currentUser) {
+          const newCount = incrementUsage();
+          if (newCount >= FREE_LIMIT) {
+            const warning = document.getElementById('free-limit-warning');
+            if (warning) warning.style.display = 'block';
+          }
+        }
+    
+        setTimeout(() => showScreen('win'), 450);
     
       } catch (err) {
         showError('YouTube download error: ' + err.message);
         return;
       }
     }
-
+    
     revokeAll();
     showScreen('loading');
     setProgress(0);
