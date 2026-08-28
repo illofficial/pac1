@@ -2236,10 +2236,52 @@
       return;
     }
     if(url && isLikelyYoutubePage(url)){
-      inputError.textContent = '⚠ this is a YouTube page link, not an audio file. This tool does not download from YouTube directly — paste a direct .mp3/.wav link or upload a file manually.';
-      void inputError.offsetWidth;
-      inputError.classList.add('show');
-      return;
+      // Отправляем запрос на сервер для скачивания
+      try {
+        setProgress(5);
+        const response = await fetch('https://ваш-сервис.onrender.com/download-youtube', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+    
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Download failed');
+        }
+    
+        // Получаем файл как Blob
+        const blob = await response.blob();
+        // Дальше обрабатываем blob как обычный файл
+        // Используем ту же логику, что и для fileInput
+        const arrayBuffer = await blob.arrayBuffer();
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const actx = new AudioCtx();
+        let audioBuffer;
+        try {
+          audioBuffer = await actx.decodeAudioData(arrayBuffer.slice(0));
+        } catch (decodeErr) {
+          throw new Error('Could not decode audio from YouTube');
+        }
+    
+        // Получаем каналы
+        const leftCopy = Float32Array.from(audioBuffer.getChannelData(0));
+        const rightCopy = audioBuffer.numberOfChannels > 1 ? Float32Array.from(audioBuffer.getChannelData(1)) : Float32Array.from(audioBuffer.getChannelData(0));
+    
+        // Дальше идёт обработка через MasteringChain (как в вашем коде)
+        // ... (код, который у вас идёт после декодирования)
+        // ВАЖНО: пропустите часть с загрузкой по ссылке или файлом, так как мы уже имеем audioBuffer
+    
+        // Продолжайте обработку как обычно
+        // Например:
+        // const result = await window.MasteringChain.processAudioAsync(...)
+        // ...
+        // и показ экрана win
+    
+      } catch (err) {
+        showError('YouTube download error: ' + err.message);
+        return;
+      }
     }
 
     revokeAll();
