@@ -2315,6 +2315,12 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url })
         });
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('audio/wav') && !contentType.includes('audio/')) {
+          const text = await response.text();
+          throw new Error('Server returned non-audio: ' + text.slice(0, 200));
+        }
     
         if (!response.ok) {
           const errorData = await response.json();
@@ -2322,6 +2328,20 @@
         }
     
         const blob = await response.blob();
+        console.log('Blob type:', blob.type);
+        console.log('Blob size:', blob.size);
+        
+        // Если это не аудио, прочитаем как текст (ошибка)
+        if (!blob.type.includes('audio')) {
+          const text = await blob.text();
+          console.error('Server returned non-audio:', text);
+          let errorMsg = 'Server returned an error';
+          try {
+            const json = JSON.parse(text);
+            if (json.error) errorMsg = json.error;
+          } catch (_) {}
+          throw new Error(errorMsg);
+        }
         const arrayBuffer = await blob.arrayBuffer();
     
         // ---------- ДАЛЬШЕ ИДЁТ ТА ЖЕ ЛОГИКА, ЧТО И ДЛЯ ОБЫЧНОЙ ССЫЛКИ ----------
