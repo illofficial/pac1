@@ -5,8 +5,8 @@ const admin = require('firebase-admin');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 require('dotenv').config();
 
-app.use(cors()); // разрешает запросы с любых источников
-app.use(express.json());
+//app.use(cors()); // разрешает запросы с любых источников
+//app.use(express.json());
 
 //---
 const { exec } = require('child_process');
