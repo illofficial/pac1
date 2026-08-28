@@ -359,26 +359,6 @@
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
   const db = firebase.firestore();
-
-  // ----- СЛЕЖЕНИЕ ЗА СОСТОЯНИЕМ АВТОРИЗАЦИИ -----
-  auth.onAuthStateChanged((user) => {
-    if (user) {
-      // Пользователь вошёл
-      showScreen('input');
-      // Сбросим лимит для удобства (если залогинился)
-      resetUsage();
-    } else {
-      // Пользователь не вошёл – показываем экран входа, если лимит исчерпан
-      if (isLimitReached()) {
-        showScreen('login');
-        document.getElementById('login-error').textContent =
-          '⚠ You\'ve used 3 free conversions. Sign in to continue!';
-        document.getElementById('login-error').classList.add('show');
-      } else {
-        showScreen('input');
-      }
-    }
-  });
 </script>
   
 <div class="stage">
@@ -2199,6 +2179,26 @@
       return getUsageCount() >= FREE_LIMIT;
   }
 
+  // ----- СЛЕЖЕНИЕ ЗА СОСТОЯНИЕМ АВТОРИЗАЦИИ -----
+  auth.onAuthStateChanged((user) => {
+    if (user) {
+      // Пользователь вошёл
+      showScreen('input');
+      // Сбросим лимит для удобства (если залогинился)
+      resetUsage();
+    } else {
+      // Пользователь не вошёл – показываем экран входа, если лимит исчерпан
+      if (isLimitReached()) {
+        showScreen('login');
+        document.getElementById('login-error').textContent =
+          '⚠ You\'ve used 3 free conversions. Sign in to continue!';
+        document.getElementById('login-error').classList.add('show');
+      } else {
+        showScreen('input');
+      }
+    }
+  });
+
   //-----------------
 
   // ----- ОБРАБОТЧИКИ ЛОГИНА И РЕГИСТРАЦИИ -----
@@ -2291,8 +2291,7 @@
 
   startBtn.addEventListener('click', async () => {
 
-  //auth.currentUser
-    if (!firebase.auth().currentUser && isLimitReached()) { 
+    if (!auth.currentUser && isLimitReached()) {
         showScreen('login');
         document.getElementById('login-error').textContent = 
             '⚠ You\'ve used 3 free conversions. Sign in to continue!';
