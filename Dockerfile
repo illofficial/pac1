@@ -1,14 +1,18 @@
-FROM node:18-bookworm-slim
+FROM ubuntu:22.04
 
-# Устанавливаем ffmpeg, python3 и pip
+# Устанавливаем зависимости (без интерактивных запросов)
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt-get update && apt-get install -y \
+    curl \
     ffmpeg \
     python3 \
     python3-pip \
-    --no-install-recommends && \
-    pip3 install --upgrade yt-dlp && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
+    && pip3 install --upgrade yt-dlp \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app
 
