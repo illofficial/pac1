@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: mastering-service
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      # sandbox по умолчанию - подходит, пока подписки проверяются через
+      # тестовые (Sandbox/TestFlight) Apple ID. Переключить на "production"
+      # только когда приложение реально опубликовано в App Store.
+      - key: APP_ENV
+        value: sandbox
+      # Bundle Identifier из Xcode / App Store Connect - см. ios-app/README.md.
+      - key: APP_BUNDLE_ID
+        value: com.example.masteringapp
+      # Числовой Apple ID приложения из App Store Connect - появляется
+      # только после создания приложения там. sync: false - значит Render
+      # спросит значение в своём дашборде и не будет хранить его в этом файле.
+      - key: APP_APPLE_ID
+        sync: false
