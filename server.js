@@ -34,8 +34,9 @@ app.post('/download-youtube', async (req, res) => {
 
   // Команда для скачивания и конвертации в WAV (16-bit, 44.1kHz)
   // --extract-audio --audio-format wav --audio-quality 0 (лучшее качество)
-  const command = `yt-dlp -f bestaudio --extract-audio --audio-format wav --audio-quality 0 -o "${outputPath}" "${url}"`;
-
+  //const command = `yt-dlp -f bestaudio --extract-audio --audio-format wav --audio-quality 0 -o "${outputPath}" "${url}"`;
+  const command = `yt-dlp -f "bestaudio[ext=m4a]" --extract-audio --audio-format wav --audio-quality 0 -o "${outputPath}" "${url}"`;
+  
   console.log(`Downloading YouTube audio: ${url}`);
 
   try {
