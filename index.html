@@ -435,6 +435,10 @@
         If your browser blocks the download, tap <a href="#" id="download-fallback" class="fallback-link">this direct link</a> instead — or long-press / right-click the button above and choose "Save Link As…".
       </div>
 
+      <div id="free-limit-warning" style="display:none; color:var(--yellow); font-size:14px; margin-top:10px; background:#000; border:2px solid var(--yellow); padding:8px;">
+        ⚠ This was your last free conversion. <a href="#" id="signup-now-link" style="color:var(--cyan);">Sign up</a> to continue.
+      </div>
+
       <div class="ab-label"><span>ORIGINAL</span><span class="tag-dim" id="orig-meta"></span></div>
       <div class="ab-box"><audio id="orig-audio" controls preload="metadata"></audio></div>
       <canvas class="wave" id="wave-orig"></canvas>
@@ -2131,6 +2135,35 @@
   const waveMastered = document.getElementById('wave-mastered');
   const genreRow = document.getElementById('genre-row');
 
+    // ----- СЧЁТЧИК БЕСПЛАТНЫХ ИСПОЛЬЗОВАНИЙ -----
+  const FREE_LIMIT = 3;
+  const STORAGE_KEY = 'converter_usage_count';
+
+  function getUsageCount() {
+      return parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+  }
+
+  function incrementUsage() {
+      const count = getUsageCount() + 1;
+      localStorage.setItem(STORAGE_KEY, count.toString());
+      return count;
+  }
+
+  function resetUsage() {
+      localStorage.removeItem(STORAGE_KEY);
+  }
+
+  function isLimitReached() {
+      return getUsageCount() >= FREE_LIMIT;
+  }
+
+  //-----------------
+
+  document.getElementById('signup-now-link')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      showScreen('login');
+  });
+  
   let selectedGenre = 'soulfunk';
   genreRow.addEventListener('click', (e) => {
     const btn = e.target.closest('.genre-btn');
@@ -2162,6 +2195,16 @@
   retryBtn.addEventListener('click', () => showScreen('input'));
 
   startBtn.addEventListener('click', async () => {
+
+  //auth.currentUser
+    if (!firebase.auth().currentUser && isLimitReached()) { 
+        showScreen('login');
+        document.getElementById('login-error').textContent = 
+            '⚠ You\'ve used 3 free conversions. Sign in to continue!';
+        document.getElementById('login-error').classList.add('show');
+        return;
+    }
+    
     inputError.classList.remove('show');
     const url = urlInput.value.trim();
     const file = fileInput.files && fileInput.files[0];
@@ -2307,6 +2350,16 @@
         ['final true peak', fmt(m.truePeakAfterDb,2) + ' dBTP (ceiling ' + m.truePeakCeilingDb + ')'],
       ].map(([k,v]) => `<div><span class="k">${k}:</span> <span class="v">${v}</span></div>`).join('');
 
+      // Если пользователь не залогинен, увеличиваем счётчик использований
+      if (!auth.currentUser) {
+          const newCount = incrementUsage();
+          // Если после инкремента лимит достигнут — показываем предупреждение на экране win
+          if (newCount >= FREE_LIMIT) {
+              const warning = document.getElementById('free-limit-warning');
+              if (warning) warning.style.display = 'block';
+          }
+      }
+      
       setTimeout(() => showScreen('win'), 450);
 
     } catch(err){
