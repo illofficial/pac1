@@ -1,14 +1,13 @@
 FROM node:22-alpine
 
-# Устанавливаем системные зависимости (ffmpeg, python, pip, bash, wget)
 RUN apk add --no-cache python3 py3-pip ffmpeg bash wget
 
-# Устанавливаем yt-dlp и yt-dlp-proxy с разрешением на изменение системы
+# Устанавливаем yt-dlp и yt-dlp-proxy
 RUN pip3 install --break-system-packages yt-dlp yt-dlp-proxy
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm install   # теперь не устанавливает ничего, но команда нужна
 COPY . .
 
 ENV YTDL_NO_UPDATE=1
