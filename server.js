@@ -38,31 +38,40 @@ function fetchWithApify(videoId, res) {
     return fetchWithYtDlpProxy(videoId, res);
   }
 
-  console.log(`[${videoId}] Trying Apify (bernardo/youtube-downloader)`);
+  console.log(`[${videoId}] Trying Apify (utils/youtube-link)`);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
+  // Правильный input для utils/youtube-link – массив объектов
   const input = {
-    link: url,
-    quality: 'mp3',
+    videos: [{ url: url }],
+    proxyConfiguration: {
+      useApifyProxy: true,
+      apifyProxyGroups: ['RESIDENTIAL'],
+    },
   };
 
   const payload = JSON.stringify(input);
+  console.log(`[${videoId}] Apify payload:`, payload);
+
   const options = {
     hostname: 'api.apify.com',
     port: 443,
-    path: `/v2/acts/bernardo~youtube-downloader/run-sync-get-dataset-items?token=${APIFY_TOKEN}`,
+    path: `/v2/acts/utils~youtube-link/run-sync-get-dataset-items?token=${APIFY_TOKEN}`,
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(payload),
     },
-    timeout: 180000, // увеличен до 3 минут
+    timeout: 180000,
   };
 
   const req = https.request(options, (apiRes) => {
     let data = '';
     apiRes.on('data', chunk => data += chunk);
     apiRes.on('end', () => {
+      console.log(`[${videoId}] Apify response status: ${apiRes.statusCode}`);
+      console.log(`[${videoId}] Apify response body (first 500 chars):`, data.slice(0, 500));
+
       try {
         if (apiRes.statusCode !== 200) {
           throw new Error(`Apify API returned ${apiRes.statusCode}: ${data.slice(0, 500)}`);
@@ -73,15 +82,33 @@ function fetchWithApify(videoId, res) {
         }
 
         const item = result[0];
-        let audioUrl = item.url || item.file || item.downloadUrl || item.audio || item.link;
+        console.log(`[${videoId}] Item keys:`, Object.keys(item));
+        console.log(`[${videoId}] Title: ${item.title}`);
+
+        // Ищем аудио-форматы
+        let audioUrl = null;
+        if (item.audioFormats && Array.isArray(item.audioFormats)) {
+          const sorted = item.audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+          audioUrl = sorted[0]?.url;
+        }
+        if (!audioUrl && item.url) {
+          audioUrl = item.url;
+        }
+        if (!audioUrl && item.videoFormats) {
+          for (const fmt of item.videoFormats) {
+            if (fmt.audioBitrate) {
+              audioUrl = fmt.url;
+              break;
+            }
+          }
+        }
         if (!audioUrl) {
-          console.error(`[${videoId}] Apify response fields:`, Object.keys(item));
           throw new Error('No audio URL found');
         }
 
-        console.log(`[${videoId}] Audio URL: ${audioUrl}`);
+        console.log(`[${videoId}] Selected audio URL: ${audioUrl}`);
 
-        const audioReq = https.get(audioUrl, { timeout: 30000 }, (audioRes) => {
+        const audioReq = https.get(audioUrl, { timeout: 120000 }, (audioRes) => {
           const contentType = audioRes.headers['content-type'] || '';
           console.log(`[${videoId}] Audio response: ${audioRes.statusCode}, Content-Type: ${contentType}`);
 
@@ -89,12 +116,14 @@ function fetchWithApify(videoId, res) {
             throw new Error(`Audio stream returned ${audioRes.statusCode}`);
           }
           if (!contentType.startsWith('audio/')) {
-            // Если не аудио, выведем первые 200 символов
             let body = '';
-            audioRes.on('data', chunk => body += chunk.toString('utf8', 0, 200));
+            audioRes.on('data', chunk => {
+              body += chunk.toString('utf8', 0, 300);
+              audioRes.destroy();
+            });
             audioRes.on('end', () => {
               console.error(`[${videoId}] Non-audio response: ${body}`);
-              if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
+              throw new Error(`Non-audio content: ${contentType}`);
             });
             return;
           }
@@ -108,22 +137,20 @@ function fetchWithApify(videoId, res) {
         });
 
         audioReq.on('error', (err) => {
-          console.error(`[${videoId}] Apify audio request error:`, err.message);
+          console.error(`[${videoId}] Apify audio error:`, err.message);
           if (!res.headersSent) {
             fetchWithYtDlpProxy(videoId, res);
           } else {
             res.end();
           }
         });
-
-        audioReq.setTimeout(30000, () => {
+        audioReq.setTimeout(120000, () => {
           audioReq.destroy();
           if (!res.headersSent) {
             console.error(`[${videoId}] Apify audio timeout`);
             fetchWithYtDlpProxy(videoId, res);
           }
         });
-
       } catch (err) {
         console.error(`[${videoId}] Apify error:`, err.message);
         fetchWithYtDlpProxy(videoId, res);
@@ -138,7 +165,7 @@ function fetchWithApify(videoId, res) {
 
   req.on('timeout', () => {
     req.destroy();
-    console.error(`[${videoId}] Apify request timeout`);
+    console.error(`[${videoId}] Apify timeout`);
     fetchWithYtDlpProxy(videoId, res);
   });
 
@@ -239,7 +266,7 @@ function handleYt(videoId, res) {
   }
 }
 
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname.startsWith('/api/yt/')) {
     const videoId = url.pathname.split('/api/yt/')[1].split('?')[0];
@@ -256,8 +283,11 @@ http.createServer((req, res) => {
   let filePath = path.join(STATIC, url.pathname === '/' ? 'index.html' : url.pathname);
   if (!path.extname(filePath)) filePath = path.join(STATIC, 'index.html');
   serveFile(res, filePath);
-}).listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+});
+
+server.timeout = 180000;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT} (timeout: ${server.timeout/1000}s)`);
   if (APIFY_TOKEN) console.log('🔑 Apify token is set');
   else console.warn('⚠️ APIFY_TOKEN not set, only yt-dlp-proxy fallback will work');
 });
