@@ -557,15 +557,15 @@
 <script type="importmap">
 {
   "imports": {
-    "firebase/app": "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js",
-    "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
   }
 }
 </script>
 
 <script type="module">
   import { initializeApp } from 'firebase/app';
-  import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+  import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
   const firebaseConfig = {
     apiKey: "AIzaSyDHaMAQyAJUsCRhKdEUI-appY7UaeIoWbI",
@@ -580,32 +580,36 @@
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
 
-  // Делаем функции глобально доступными
+  // Глобальная функция для получения токена
   window.getFirebaseToken = async function() {
     const user = auth.currentUser;
-    if (!user) return null;
+    if (!user) {
+      console.warn('No user logged in');
+      return null;
+    }
     try {
-      return await user.getIdToken();
-    } catch (e) {
-      console.error('Error getting token:', e);
+      const token = await user.getIdToken();
+      console.log('Token obtained');
+      return token;
+    } catch (err) {
+      console.error('Error getting token:', err);
       return null;
     }
   };
 
-  window.signInWithEmailAndPassword = signInWithEmailAndPassword;
-  window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
-  window.signOut = signOut;
-  window.auth = auth;
-
-  // Следим за состоянием входа
+  // Следим за состоянием авторизации, если нужно
   onAuthStateChanged(auth, (user) => {
     if (user) {
       console.log('User logged in:', user.email);
-      // Можно обновить UI
     } else {
       console.log('User logged out');
     }
   });
+
+  // Также экспортируем функции для входа/регистрации, если они не объявлены отдельно
+  // Если у вас уже есть свои функции, можно их переопределить, но лучше использовать их напрямую
+  window.auth = auth;
+  console.log('Firebase initialized, getFirebaseToken available');
 </script>
 <script id="dsp-src">
 // mastering_chain.js (v3)
