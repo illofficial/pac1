@@ -565,7 +565,12 @@
 
 <script type="module">
   import { initializeApp } from 'firebase/app';
-  import { getAuth, onAuthStateChanged } from 'firebase/auth';
+  import { 
+    getAuth, 
+    onAuthStateChanged,
+    signInWithEmailAndPassword,    // ← добавили
+    createUserWithEmailAndPassword // ← добавили
+  } from 'firebase/auth';
 
   const firebaseConfig = {
     apiKey: "AIzaSyDHaMAQyAJUsCRhKdEUI-appY7UaeIoWbI",
@@ -597,7 +602,12 @@
     }
   };
 
-  // Следим за состоянием авторизации, если нужно
+  // Экспортируем функции входа/регистрации в window (для использования в onclick)
+  window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+  window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+  window.auth = auth;
+
+  // Следим за состоянием авторизации (для отладки)
   onAuthStateChanged(auth, (user) => {
     if (user) {
       console.log('User logged in:', user.email);
@@ -606,9 +616,6 @@
     }
   });
 
-  // Также экспортируем функции для входа/регистрации, если они не объявлены отдельно
-  // Если у вас уже есть свои функции, можно их переопределить, но лучше использовать их напрямую
-  window.auth = auth;
   console.log('Firebase initialized, getFirebaseToken available');
 </script>
 <script id="dsp-src">
@@ -2393,7 +2400,7 @@
       headers['Authorization'] = 'Bearer ' + token;
     }
 
-    const response = await fetch('/api/yt/' + videoId, {
+    const resp = await fetch('/api/yt/' + videoId, {
       headers: {
         'Authorization': `Bearer ${token}`,
       },
