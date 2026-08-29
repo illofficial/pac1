@@ -2631,6 +2631,12 @@
       return;
     }
 
+    const token = await getFirebaseToken();
+    if (!token) {
+      showLoginScreen();
+      return;
+    }
+    
     // Usage gate: check trials before processing
     const usage = resetDailyIfNeeded(getUsage());
     const left = trialsLeft(usage);
