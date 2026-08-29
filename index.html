@@ -2352,9 +2352,25 @@ const analytics = getAnalytics(app);
   }
 
   async function fetchYoutubeAudio(videoId, onProgress){
+
+    const token = await getFirebaseToken();
+    const headers = {
+      'Content-Type': 'application/json', // если нужно
+    };
+    if (token) {
+      headers['Authorization'] = 'Bearer ' + token;
+    }
+    
+    const resp = await fetch('/api/yt/' + videoId, { headers });
+
+    if (resp.status === 401) {
+      showLoginScreen();
+      throw new Error('Authentication required');
+    }
+    
     onProgress(0.03);
     const isProd = getInvidiousInstances()[0] === '/api/yt/';
-
+    
     if (isProd) {
       // Server-side yt-dlp: single request, returns raw audio
       const resp = await fetch('/api/yt/' + videoId);
