@@ -2286,19 +2286,30 @@
   }
 
   const INVIDIOUS_INSTANCES = [
-    'https://inv.nadeko.net',
-    'https://invidious.fdn.fr',
-    'https://yt.artemislena.eu',
-    'https://invidious.perennialte.ch',
-    'https://vid.puffyan.us',
+    '/api/yt/',
   ];
+
+  const INVIDIOUS_DIRECT = [
+    'https://inv.nadeko.net/',
+    'https://invidious.fdn.fr/',
+    'https://yt.artemislena.eu/',
+    'https://invidious.perennialte.ch/',
+    'https://vid.puffyan.us/',
+  ];
+
+  function getInvidiousInstances(){
+    const loc = window.location;
+    const isLocal = loc.hostname === 'localhost' || loc.hostname === '127.0.0.1' || loc.protocol === 'file:';
+    return isLocal ? INVIDIOUS_DIRECT : INVIDIOUS_INSTANCES;
+  }
 
   async function fetchYoutubeAudio(videoId, onProgress){
     onProgress(0.03);
     let lastError = null;
-    for (const instance of INVIDIOUS_INSTANCES) {
+    const instances = getInvidiousInstances();
+    for (const instance of instances) {
       try {
-        const apiUrl = `${instance}/api/v1/videos/${videoId}?fields=title,adaptiveFormats`;
+        const apiUrl = `${instance}api/v1/videos/${videoId}?fields=title,adaptiveFormats`;
         const resp = await fetch(apiUrl);
         if (!resp.ok) continue;
         const info = await resp.json();
@@ -2311,9 +2322,7 @@
           });
         if (!audioFormats.length) { lastError = new Error('no audio stream'); continue; }
         const fmt = audioFormats[0];
-        const proxyUrl = fmt.url && !fmt.url.startsWith('http')
-          ? `${instance}${fmt.url}`
-          : `${instance}/latest_version?id=${videoId}&itag=${fmt.itag}&local=true`;
+        const proxyUrl = `${instance}latest_version?id=${videoId}&itag=${fmt.itag}&local=true`;
         onProgress(0.18);
         const audioResp = await fetch(proxyUrl);
         if (!audioResp.ok) continue;
