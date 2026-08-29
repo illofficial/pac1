@@ -2384,37 +2384,26 @@
   }
 
   async function fetchYoutubeAudio(videoId, onProgress){
-
     const token = await window.getFirebaseToken();
     if (!token) {
-      // Пользователь не авторизован – показываем окно логина
-      showLoginScreen(); // у вас уже есть такая функция, если верить коду
+      showLoginScreen();
       return;
     }
-    const headers = {
-      'Content-Type': 'application/json', // если нужно
-    };
-    if (token) {
-      headers['Authorization'] = 'Bearer ' + token;
-    }
-
-    const resp = await fetch('/api/yt/' + videoId, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    if (resp.status === 401) {
-      showLoginScreen();
-      throw new Error('Authentication required');
-    }
-    
+  
     onProgress(0.03);
     const isProd = getInvidiousInstances()[0] === '/api/yt/';
     
     if (isProd) {
-      // Server-side yt-dlp: single request, returns raw audio
-      const resp = await fetch('/api/yt/' + videoId);
+      // Server-side: один запрос с токеном
+      const resp = await fetch('/api/yt/' + videoId, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (resp.status === 401) {
+        showLoginScreen();
+        throw new Error('Authentication required');
+      }
       if (!resp.ok) throw new Error('server returned ' + resp.status);
       onProgress(0.5);
       const blob = await resp.blob();
@@ -2422,7 +2411,7 @@
       const title = decodeURIComponent(resp.headers.get('X-Audio-Title') || 'youtube_audio');
       return { blob, title };
     }
-
+  
     // Local: Invidious API fallback
     let lastError = null;
     for (const instance of INVIDIOUS_DIRECT) {
