@@ -1,6 +1,5 @@
 const http = require('http');
-const https = require('https');
-const { execFile } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -26,57 +25,46 @@ function serveFile(res, filePath) {
   }
 }
 
-function ytDlpGetUrl(videoId) {
-  return new Promise((resolve, reject) => {
-    const url = 'https://www.youtube.com/watch?v=' + videoId;
-    execFile('yt-dlp', ['-f', 'bestaudio', '-g', '--no-playlist', url], {
-      timeout: 20000, maxBuffer: 4096,
-    }, (err, stdout) => {
-      if (err) return reject(err);
-      const line = stdout.trim().split('\n')[0];
-      if (!line || !line.startsWith('http')) return reject(new Error('no URL from yt-dlp'));
-      resolve(line);
-    });
-  });
-}
+function handleYt(videoId, res) {
+  const url = 'https://www.youtube.com/watch?v=' + videoId;
+  console.log('yt-dlp for', videoId);
 
-function fetchAudio(audioUrl, res) {
-  return new Promise((resolve, reject) => {
-    const proto = audioUrl.startsWith('https') ? https : http;
-    const opts = {
-      headers: { 'User-Agent': 'PAC1/1.0', 'Accept': '*/*' },
-      timeout: 60000,
-    };
-    const req = proto.get(audioUrl, opts, (pres) => {
-      if (pres.statusCode >= 400) {
-        pres.resume();
-        return reject(new Error('HTTP ' + pres.statusCode));
-      }
-      const total = parseInt(pres.headers['content-length'], 10) || 0;
-      res.writeHead(200, {
-        'Content-Type': pres.headers['content-type'] || 'audio/mp4',
-        'Content-Length': total || undefined,
-        'X-Audio-Title': encodeURIComponent('youtube_audio'),
-      });
-      pres.pipe(res);
-      pres.on('end', resolve);
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-  });
-}
+  const proc = spawn('yt-dlp', [
+    '-f', 'bestaudio',
+    '--no-playlist',
+    '--no-check-certificates',
+    '--socket-timeout', '20',
+    '-o', '-',
+    url,
+  ], { timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] });
 
-async function handleYt(videoId, res) {
-  try {
-    console.log('yt-dlp for', videoId);
-    const audioUrl = await ytDlpGetUrl(videoId);
-    console.log('  got URL:', audioUrl.slice(0, 80) + '...');
-    await fetchAudio(audioUrl, res);
-  } catch (e) {
-    console.error('yt-dlp failed:', e.message);
-    res.writeHead(502);
-    res.end('YouTube audio unavailable: ' + e.message);
-  }
+  res.writeHead(200, {
+    'Content-Type': 'audio/mp4',
+    'X-Audio-Title': encodeURIComponent('youtube_audio'),
+  });
+
+  let first = true;
+  proc.stdout.on('data', (chunk) => {
+    if (first) { console.log('  streaming audio, first chunk:', chunk.length, 'bytes'); first = false; }
+    res.write(chunk);
+  });
+  proc.stdout.on('end', () => res.end());
+
+  let stderr = '';
+  proc.stderr.on('data', (d) => stderr += d);
+
+  proc.on('error', (e) => {
+    console.error('yt-dlp spawn error:', e.message);
+    if (!res.headersSent) { res.writeHead(502); res.end('yt-dlp error: ' + e.message); }
+    else res.end();
+  });
+  proc.on('close', (code) => {
+    if (code !== 0 && !res.headersSent) {
+      console.error('yt-dlp exit', code, stderr.slice(0, 300));
+      res.writeHead(502);
+      res.end('yt-dlp failed: ' + stderr.slice(0, 200));
+    }
+  });
 }
 
 http.createServer((req, res) => {
