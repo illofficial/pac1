@@ -31,6 +31,7 @@ function handleYt(videoId, res) {
 
   // Запускаем процесс
   const proc = spawn('yt-dlp', [
+    '--cookies', 'cookies.txt', 
     '-f', 'bestaudio',
     '--no-playlist',
     '--no-check-certificates',
