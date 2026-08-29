@@ -29,17 +29,27 @@ function handleYt(videoId, res) {
   const url = 'https://www.youtube.com/watch?v=' + videoId;
   console.log('yt-dlp for', videoId);
 
+  // Ключевые аргументы для стабильной работы:
+  // -f bestaudio -- скачиваем только аудио
+  // --no-playlist -- отключаем плейлисты
+  // --no-check-certificates -- игнорируем проблемы с сертификатами (может помочь)
+  // --js-runtime node -- указываем использовать Node.js для JS-рантайма
+  // -o - -- выводим результат в stdout
   const proc = spawn('yt-dlp', [
     '-f', 'bestaudio',
     '--no-playlist',
     '--no-check-certificates',
-    '--socket-timeout', '20',
+    '--js-runtime', 'node',
     '-o', '-',
     url,
-  ], { timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] });
+  ], {
+    timeout: 120000, // Увеличиваем таймаут до 2 минут
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
 
+  // Отправляем заголовки, что будет поток аудио
   res.writeHead(200, {
-    'Content-Type': 'audio/mp4',
+    'Content-Type': 'audio/mp4', // или 'audio/webm', но mp4 чаще работает
     'X-Audio-Title': encodeURIComponent('youtube_audio'),
   });
 
@@ -51,18 +61,32 @@ function handleYt(videoId, res) {
   proc.stdout.on('end', () => res.end());
 
   let stderr = '';
-  proc.stderr.on('data', (d) => stderr += d);
+  proc.stderr.on('data', (d) => {
+    stderr += d.toString();
+    console.error('yt-dlp stderr:', d.toString());
+  });
 
   proc.on('error', (e) => {
     console.error('yt-dlp spawn error:', e.message);
-    if (!res.headersSent) { res.writeHead(502); res.end('yt-dlp error: ' + e.message); }
-    else res.end();
-  });
-  proc.on('close', (code) => {
-    if (code !== 0 && !res.headersSent) {
-      console.error('yt-dlp exit', code, stderr.slice(0, 300));
+    if (!res.headersSent) {
       res.writeHead(502);
-      res.end('yt-dlp failed: ' + stderr.slice(0, 200));
+      res.end('yt-dlp error: ' + e.message);
+    } else {
+      res.end();
+    }
+  });
+
+  proc.on('close', (code) => {
+    if (code !== 0) {
+      console.error('yt-dlp exit with code', code, 'stderr:', stderr.slice(0, 500));
+      if (!res.headersSent) {
+        res.writeHead(502);
+        res.end('yt-dlp failed: ' + stderr.slice(0, 300));
+      } else {
+        res.end();
+      }
+    } else {
+      console.log('yt-dlp finished successfully');
     }
   });
 }
