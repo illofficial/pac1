@@ -7,9 +7,14 @@ const PORT = process.env.PORT || 80;
 const STATIC = __dirname;
 
 const MIME = {
-  '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
-  '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json',
-  '.wav': 'audio/wav', '.mp3': 'audio/mpeg',
+  '.html': 'text/html',
+  '.js': 'application/javascript',
+  '.css': 'text/css',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.json': 'application/json',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
 };
 
 function serveFile(res, filePath) {
@@ -35,6 +40,7 @@ function handleYt(videoId, res) {
   });
 
   let headersSent = false;
+
   const sendHeaders = () => {
     if (!headersSent) {
       res.writeHead(200, {
@@ -56,7 +62,6 @@ function handleYt(videoId, res) {
       res.end();
       console.log(`[${videoId}] Stream finished`);
     } else {
-      // Если данных не было – это ошибка (не должно случиться, если была ошибка ранее)
       console.error(`[${videoId}] No data received`);
       if (!res.headersSent) {
         res.writeHead(404);
@@ -67,7 +72,7 @@ function handleYt(videoId, res) {
 
   stream.on('error', (err) => {
     console.error(`[${videoId}] ytdl error:`, err.message);
-    // Разбираем ошибку
+
     let statusCode = 500;
     let message = 'Internal server error';
 
@@ -106,46 +111,6 @@ function handleYt(videoId, res) {
   }, 60000);
 }
 
-  stream.on('data', (chunk) => {
-    sendHeaders();
-    res.write(chunk);
-  });
-
-  stream.on('end', () => {
-    if (headersSent) {
-      res.end();
-      console.log(`[${videoId}] Stream finished`);
-    } else {
-      console.error(`[${videoId}] No data received`);
-      if (!res.headersSent) {
-        res.writeHead(502);
-        res.end('No audio data');
-      }
-    }
-  });
-
-  stream.on('error', (err) => {
-    console.error(`[${videoId}] ytdl error:`, err.message);
-    if (!headersSent && !res.headersSent) {
-      res.writeHead(502);
-      res.end('ytdl error: ' + err.message);
-    } else {
-      res.end();
-    }
-  });
-
-  const timeout = setTimeout(() => {
-    if (!headersSent) {
-      console.error(`[${videoId}] Timeout waiting for first chunk`);
-      stream.destroy();
-      if (!res.headersSent) {
-        res.writeHead(504);
-        res.end('Timeout');
-      }
-    }
-  }, 60000);
-}
-
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
@@ -157,12 +122,15 @@ http.createServer((req, res) => {
     }
     return handleYt(videoId, res);
   }
+
   if (url.pathname === '/api/health') {
     res.writeHead(200);
     return res.end('ok');
   }
 
   let filePath = path.join(STATIC, url.pathname === '/' ? 'index.html' : url.pathname);
-  if (!path.extname(filePath)) filePath = path.join(STATIC, 'index.html');
+  if (!path.extname(filePath)) {
+    filePath = path.join(STATIC, 'index.html');
+  }
   serveFile(res, filePath);
 }).listen(PORT, () => console.log(`Server running on port ${PORT}`));
