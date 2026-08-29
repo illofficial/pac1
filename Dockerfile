@@ -5,7 +5,9 @@ RUN apk add --no-cache python3 py3-pip ffmpeg bash wget && \
     chmod a+rx /usr/local/bin/yt-dlp
 
 WORKDIR /app
-COPY index.html server.js ./
+
+# Копируем всё, включая cookies.txt
+COPY index.html server.js cookies.txt ./
 
 RUN yt-dlp --version
 
