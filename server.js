@@ -41,7 +41,6 @@ function fetchWithApify(videoId, res) {
   console.log(`[${videoId}] Trying Apify (utils/youtube-link)`);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-  // Правильный input для utils/youtube-link – массив объектов
   const input = {
     videos: [{ url: url }],
     proxyConfiguration: {
@@ -73,7 +72,8 @@ function fetchWithApify(videoId, res) {
       console.log(`[${videoId}] Apify response body (first 500 chars):`, data.slice(0, 500));
 
       try {
-        if (apiRes.statusCode !== 200) {
+        // Успешные статусы: 200 или 201 (создано)
+        if (apiRes.statusCode !== 200 && apiRes.statusCode !== 201) {
           throw new Error(`Apify API returned ${apiRes.statusCode}: ${data.slice(0, 500)}`);
         }
         const result = JSON.parse(data);
@@ -85,29 +85,14 @@ function fetchWithApify(videoId, res) {
         console.log(`[${videoId}] Item keys:`, Object.keys(item));
         console.log(`[${videoId}] Title: ${item.title}`);
 
-        // Ищем аудио-форматы
-        let audioUrl = null;
-        if (item.audioFormats && Array.isArray(item.audioFormats)) {
-          const sorted = item.audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-          audioUrl = sorted[0]?.url;
+        // У актора utils/youtube-link ответ содержит поле downloadUrl
+        if (!item.ok || !item.downloadUrl) {
+          throw new Error('Download URL missing in response');
         }
-        if (!audioUrl && item.url) {
-          audioUrl = item.url;
-        }
-        if (!audioUrl && item.videoFormats) {
-          for (const fmt of item.videoFormats) {
-            if (fmt.audioBitrate) {
-              audioUrl = fmt.url;
-              break;
-            }
-          }
-        }
-        if (!audioUrl) {
-          throw new Error('No audio URL found');
-        }
+        const audioUrl = item.downloadUrl;
+        console.log(`[${videoId}] Download URL: ${audioUrl}`);
 
-        console.log(`[${videoId}] Selected audio URL: ${audioUrl}`);
-
+        // Скачиваем аудио по ссылке и передаём клиенту
         const audioReq = https.get(audioUrl, { timeout: 120000 }, (audioRes) => {
           const contentType = audioRes.headers['content-type'] || '';
           console.log(`[${videoId}] Audio response: ${audioRes.statusCode}, Content-Type: ${contentType}`);
@@ -129,7 +114,7 @@ function fetchWithApify(videoId, res) {
           }
 
           res.writeHead(200, {
-            'Content-Type': 'audio/mp4',
+            'Content-Type': 'audio/webm', // Apify возвращает WebM
             'X-Audio-Title': encodeURIComponent(item.title || 'youtube_audio'),
           });
           audioRes.pipe(res);
