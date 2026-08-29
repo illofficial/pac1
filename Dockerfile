@@ -2,17 +2,15 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Копируем файлы с зависимостями
+# Копируем package.json и устанавливаем зависимости
 COPY package*.json ./
-
-# Устанавливаем зависимости
 RUN npm install
 
-# Копируем остальные файлы проекта
+# Копируем остальные файлы
 COPY index.html server.js ./
 
-# (Опционально) если нужен ffmpeg для других целей, установим
-RUN apk add --no-cache ffmpeg
+# Отключаем проверку обновлений ytdl-core
+ENV YTDL_NO_UPDATE=1
 
 EXPOSE 80
 CMD ["node", "server.js"]
