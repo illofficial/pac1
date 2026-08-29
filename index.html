@@ -562,52 +562,51 @@
   }
 }
 </script>
+<script type="module">
+  import { initializeApp } from "firebase/app";
+  import { getAnalytics } from "firebase/analytics";
+  import { getAuth, onAuthStateChanged } from 'firebase/auth';
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+  
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyDHaMAQyAJUsCRhKdEUI-appY7UaeIoWbI",
+    authDomain: "pac1-51fbe.firebaseapp.com",
+    projectId: "pac1-51fbe",
+    storageBucket: "pac1-51fbe.firebasestorage.app",
+    messagingSenderId: "314399113786",
+    appId: "1:314399113786:web:d2db0c1fd9b60c1b2aab03",
+    measurementId: "G-8ZPVTE2J3G"
+  };
+  
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  
+  const auth = getAuth();
+  
+  // Функция для получения токена
+  async function getFirebaseToken() {
+    const user = auth.currentUser;
+    if (!user) {
+      console.warn('No user logged in');
+      return null;
+    }
+    try {
+      const token = await user.getIdToken();
+      console.log('Token obtained:', token.substring(0, 20) + '...');
+      return token;
+    } catch (err) {
+      console.error('Error getting token:', err);
+      return null;
+    }
+  }
+  // Сделаем функцию доступной глобально (чтобы её можно было вызвать из onclick)
+  window.getFirebaseToken = getFirebaseToken;
+</script>
 <script id="dsp-src">
-
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyDHaMAQyAJUsCRhKdEUI-appY7UaeIoWbI",
-  authDomain: "pac1-51fbe.firebaseapp.com",
-  projectId: "pac1-51fbe",
-  storageBucket: "pac1-51fbe.firebasestorage.app",
-  messagingSenderId: "314399113786",
-  appId: "1:314399113786:web:d2db0c1fd9b60c1b2aab03",
-  measurementId: "G-8ZPVTE2J3G"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-
-const auth = getAuth();
-
-// Функция для получения токена
-async function getFirebaseToken() {
-  const user = auth.currentUser;
-  if (!user) {
-    // Если пользователь не залогинен — возвращаем null
-    return null;
-  }
-  try {
-    // Получаем свежий ID токен (принудительно обновляем, если истёк)
-    const token = await user.getIdToken(true);
-    return token;
-  } catch (error) {
-    console.error('Error getting Firebase token:', error);
-    return null;
-  }
-}
-
-// Сделаем функцию доступной глобально (чтобы её можно было вызвать из onclick)
-window.getFirebaseToken = getFirebaseToken;
-
 // mastering_chain.js (v3)
 // Light "enhancement" chain, not a full mastering brickwall: gentle saturation +
 // transient clarity + continuous, density-aware dynamics control (roughly half the
