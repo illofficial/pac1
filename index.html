@@ -2285,14 +2285,9 @@
     return null;
   }
 
-  const INVIDIOUS_INSTANCES = [
-    '/api/yt/',
-  ];
-
   const INVIDIOUS_DIRECT = [
-    'https://inv.nadeko.net/',
     'https://invidious.fdn.fr/',
-    'https://yt.artemislena.eu/',
+    'https://inv.nadeko.net/',
     'https://invidious.perennialte.ch/',
     'https://vid.puffyan.us/',
   ];
@@ -2300,14 +2295,27 @@
   function getInvidiousInstances(){
     const loc = window.location;
     const isLocal = loc.hostname === 'localhost' || loc.hostname === '127.0.0.1' || loc.protocol === 'file:';
-    return isLocal ? INVIDIOUS_DIRECT : INVIDIOUS_INSTANCES;
+    return isLocal ? INVIDIOUS_DIRECT : ['/api/yt/'];
   }
 
   async function fetchYoutubeAudio(videoId, onProgress){
     onProgress(0.03);
+    const isProd = getInvidiousInstances()[0] === '/api/yt/';
+
+    if (isProd) {
+      // Server-side yt-dlp: single request, returns raw audio
+      const resp = await fetch('/api/yt/' + videoId);
+      if (!resp.ok) throw new Error('server returned ' + resp.status);
+      onProgress(0.5);
+      const blob = await resp.blob();
+      onProgress(0.95);
+      const title = decodeURIComponent(resp.headers.get('X-Audio-Title') || 'youtube_audio');
+      return { blob, title };
+    }
+
+    // Local: Invidious API fallback
     let lastError = null;
-    const instances = getInvidiousInstances();
-    for (const instance of instances) {
+    for (const instance of INVIDIOUS_DIRECT) {
       try {
         const apiUrl = `${instance}api/v1/videos/${videoId}?fields=title,adaptiveFormats`;
         const resp = await fetch(apiUrl);
