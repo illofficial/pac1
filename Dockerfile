@@ -1,5 +1,5 @@
-FROM nginx:alpine
-COPY nginx.conf /etc/nginx/nginx.conf
-COPY index.html mastering_chain.js /usr/share/nginx/html/
+FROM node:22-alpine
+WORKDIR /app
+COPY index.html mastering_chain.js server.js ./
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["node", "server.js"]
