@@ -81,57 +81,65 @@ function fetchWithApify(videoId, res) {
         }
 
         const item = result[0];
-        console.log(`[${videoId}] Item keys:`, Object.keys(item));
         console.log(`[${videoId}] Title: ${item.title}`);
-
         if (!item.ok || !item.downloadUrl) {
           throw new Error('Download URL missing in response');
         }
         const downloadUrl = item.downloadUrl;
         console.log(`[${videoId}] Download URL: ${downloadUrl}`);
 
-        // 1. Скачиваем WebM с Apify
+        // 1. Скачиваем WebM с Apify в память
         https.get(downloadUrl, { timeout: 120000 }, (webmRes) => {
           if (webmRes.statusCode !== 200) {
             throw new Error(`WebM download failed: ${webmRes.statusCode}`);
           }
 
-          const contentType = webmRes.headers['content-type'] || '';
-          console.log(`[${videoId}] WebM response: ${webmRes.statusCode}, Content-Type: ${contentType}`);
+          const chunks = [];
+          webmRes.on('data', chunk => chunks.push(chunk));
+          webmRes.on('end', () => {
+            const webmBuffer = Buffer.concat(chunks);
+            console.log(`[${videoId}] WebM downloaded: ${webmBuffer.length} bytes`);
 
-          // 2. Запускаем ffmpeg для конвертации в WAV
-          const ffmpeg = spawn('ffmpeg', [
-            '-i', 'pipe:0',           // вход из stdin
-            '-f', 'wav',              // выходной формат WAV
-            '-acodec', 'pcm_s16le',   // 16-bit PCM
-            '-ar', '44100',           // частота 44.1 кГц
-            '-ac', '2',               // стерео
-            'pipe:1'                  // выход в stdout
-          ]);
+            // 2. Конвертируем через ffmpeg в WAV, собирая вывод в буфер
+            const ffmpeg = spawn('ffmpeg', [
+              '-i', 'pipe:0',
+              '-f', 'wav',
+              '-acodec', 'pcm_s16le',
+              '-ar', '44100',
+              '-ac', '2',
+              'pipe:1'
+            ]);
 
-          // Передаём WebM в stdin ffmpeg
-          webmRes.pipe(ffmpeg.stdin);
+            let wavChunks = [];
+            ffmpeg.stdout.on('data', chunk => wavChunks.push(chunk));
 
-          // Отправляем результат клиенту
-          res.writeHead(200, {
-            'Content-Type': 'audio/wav',
-            'X-Audio-Title': encodeURIComponent(item.title || 'youtube_audio'),
-          });
-
-          ffmpeg.stdout.pipe(res);
-
-          ffmpeg.on('error', (err) => {
-            console.error(`[${videoId}] ffmpeg error:`, err.message);
-            if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
-          });
-
-          ffmpeg.on('close', (code) => {
-            if (code !== 0) {
-              console.error(`[${videoId}] ffmpeg exited with code ${code}`);
+            ffmpeg.on('error', (err) => {
+              console.error(`[${videoId}] ffmpeg error:`, err.message);
               if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
-            } else {
-              console.log(`[${videoId}] ffmpeg finished successfully`);
-            }
+            });
+
+            ffmpeg.on('close', (code) => {
+              if (code !== 0) {
+                console.error(`[${videoId}] ffmpeg exited with code ${code}`);
+                if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
+                return;
+              }
+
+              const wavBuffer = Buffer.concat(wavChunks);
+              console.log(`[${videoId}] WAV size: ${wavBuffer.length} bytes`);
+
+              // 3. Отправляем WAV клиенту с Content-Length
+              res.writeHead(200, {
+                'Content-Type': 'audio/wav',
+                'Content-Length': wavBuffer.length,
+                'X-Audio-Title': encodeURIComponent(item.title || 'youtube_audio'),
+              });
+              res.end(wavBuffer);
+              console.log(`[${videoId}] WAV sent to client`);
+            });
+
+            ffmpeg.stdin.write(webmBuffer);
+            ffmpeg.stdin.end();
           });
 
           webmRes.on('error', (err) => {
