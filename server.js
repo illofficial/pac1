@@ -49,6 +49,20 @@ function serveFile(res, filePath) {
   }
 }
 
+async function verifyToken(req) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new Error('No token provided');
+  }
+  const idToken = authHeader.split('Bearer ')[1];
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    return decodedToken; // содержит uid, email и др.
+  } catch (err) {
+    throw new Error('Invalid token: ' + err.message);
+  }
+}
+
 function fetchWithApify(videoId, res) {
   if (!APIFY_TOKEN) {
     console.warn(`[${videoId}] APIFY_TOKEN not set, skipping Apify`);
@@ -273,13 +287,25 @@ function fetchWithYtDlpProxy(videoId, res) {
   }, 120000);
 }
 
-function handleYt(videoId, res) {
-  if (APIFY_TOKEN) {
-    fetchWithApify(videoId, res);
-  } else {
-    console.warn(`[${videoId}] APIFY_TOKEN not set, using yt-dlp-proxy only`);
-    fetchWithYtDlpProxy(videoId, res);
-  }
+function handleYt(videoId, res, req) { // добавьте req
+  // Проверяем токен (если нужно защитить эндпоинт)
+  verifyToken(req)
+    .then(user => {
+      console.log(`User ${user.uid} requested video ${videoId}`);
+      // Теперь вызываем основную логику (Apify или резерв)
+      if (APIFY_TOKEN) {
+        fetchWithApify(videoId, res);
+      } else {
+        fetchWithYtDlpProxy(videoId, res);
+      }
+    })
+    .catch(err => {
+      console.error('Auth error:', err.message);
+      if (!res.headersSent) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized', message: err.message }));
+      }
+    });
 }
 
 const server = http.createServer((req, res) => {
@@ -290,7 +316,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(400);
       return res.end('Invalid video ID');
     }
-    return handleYt(videoId, res);
+    return handleYt(videoId, res, req); 
   }
   if (url.pathname === '/api/health') {
     res.writeHead(200);
