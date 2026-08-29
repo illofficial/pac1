@@ -2377,14 +2377,23 @@ window.getFirebaseToken = getFirebaseToken;
   async function fetchYoutubeAudio(videoId, onProgress){
 
     const token = await getFirebaseToken();
+    if (!token) {
+      // Пользователь не авторизован – показываем окно логина
+      showLoginScreen(); // у вас уже есть такая функция, если верить коду
+      return;
+    }
     const headers = {
       'Content-Type': 'application/json', // если нужно
     };
     if (token) {
       headers['Authorization'] = 'Bearer ' + token;
     }
-    
-    const resp = await fetch('/api/yt/' + videoId, { headers });
+
+    const response = await fetch('/api/yt/' + videoId, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
 
     if (resp.status === 401) {
       showLoginScreen();
