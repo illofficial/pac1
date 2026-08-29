@@ -4,6 +4,23 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
+const admin = require('firebase-admin');
+
+// Инициализация из переменной окружения
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log('✅ Firebase Admin initialized');
+  } catch (err) {
+    console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT:', err.message);
+  }
+} else {
+  console.warn('⚠️ FIREBASE_SERVICE_ACCOUNT not set – auth will not work');
+}
+
 const PORT = process.env.PORT || 80;
 const STATIC = __dirname;
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
