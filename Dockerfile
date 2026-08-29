@@ -1,13 +1,10 @@
 FROM node:22-alpine
 
-# Устанавливаем Python, pip, ffmpeg, и необходимые утилиты
+# Устанавливаем системные зависимости (ffmpeg, python, pip, bash, wget)
 RUN apk add --no-cache python3 py3-pip ffmpeg bash wget
 
-RUN pip3 install --no-cache-dir --upgrade pip
-RUN pip3 install --no-cache-dir yt-dlp yt-dlp-proxy
-
-# Устанавливаем yt-dlp и yt-dlp-proxy
-RUN pip3 install --no-cache-dir yt-dlp yt-dlp-proxy
+# Устанавливаем yt-dlp и yt-dlp-proxy с разрешением на изменение системы
+RUN pip3 install --break-system-packages yt-dlp yt-dlp-proxy
 
 WORKDIR /app
 COPY package*.json ./
