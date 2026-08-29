@@ -41,9 +41,9 @@ function fetchWithApify(videoId, res) {
   console.log(`[${videoId}] Trying Apify`);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-  // Правильный input для актора utils/youtube-link
+  // Правильный input: массив объектов с полем url
   const input = {
-    videos: [url],
+    videos: [{ url: url }],
     proxyConfiguration: {
       useApifyProxy: true,
       apifyProxyGroups: ['RESIDENTIAL'],
@@ -77,22 +77,33 @@ function fetchWithApify(videoId, res) {
         }
 
         const item = result[0];
+        console.log(`[${videoId}] Apify item:`, item.title, Object.keys(item));
+
         let audioUrl = null;
-        let bestBitrate = 0;
-        if (item.audioFormats && Array.isArray(item.audioFormats)) {
-          for (const fmt of item.audioFormats) {
-            if (fmt.url && (fmt.bitrate || 0) > bestBitrate) {
-              bestBitrate = fmt.bitrate || 0;
-              audioUrl = fmt.url;
-            }
-          }
+        // 1. Ищем в audioFormats
+        if (item.audioFormats && Array.isArray(item.audioFormats) && item.audioFormats.length > 0) {
+          // Сортируем по битрейту (чем выше, тем лучше)
+          const sorted = item.audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+          audioUrl = sorted[0].url;
         }
+        // 2. Если нет audioFormats, может быть прямой url
         if (!audioUrl && item.url) {
           audioUrl = item.url;
+        }
+        // 3. Или в форматах видео может быть аудио-дорожка
+        if (!audioUrl && item.videoFormats) {
+          for (const fmt of item.videoFormats) {
+            if (fmt.url && fmt.audioBitrate) {
+              audioUrl = fmt.url;
+              break;
+            }
+          }
         }
         if (!audioUrl) {
           throw new Error('No audio URL found in Apify response');
         }
+
+        console.log(`[${videoId}] Found audio URL, streaming...`);
 
         const audioReq = https.get(audioUrl, (audioRes) => {
           if (audioRes.statusCode !== 200) {
