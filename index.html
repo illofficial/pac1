@@ -2375,7 +2375,7 @@
 
   async function fetchYoutubeAudio(videoId, onProgress){
 
-    const token = await getFirebaseToken();
+    const token = await window.getFirebaseToken();
     if (!token) {
       // Пользователь не авторизован – показываем окно логина
       showLoginScreen(); // у вас уже есть такая функция, если верить коду
@@ -2631,7 +2631,7 @@
       return;
     }
 
-    const token = await getFirebaseToken();
+    const token = await window.getFirebaseToken();
     if (!token) {
       showLoginScreen();
       return;
