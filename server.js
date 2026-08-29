@@ -21,6 +21,20 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   console.warn('⚠️ FIREBASE_SERVICE_ACCOUNT not set – auth will not work');
 }
 
+// Получение текущего токена
+async function getFirebaseToken() {
+  const user = auth.currentUser;
+  if (user) {
+    try {
+      return await user.getIdToken();
+    } catch (e) {
+      console.error('Error getting token:', e);
+      return null;
+    }
+  }
+  return null;
+}
+
 const PORT = process.env.PORT || 80;
 const STATIC = __dirname;
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
