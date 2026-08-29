@@ -74,7 +74,6 @@ function handleYt(videoId, res) {
     }
   });
 
-  // Таймаут 60 секунд на первый чанк
   const timeout = setTimeout(() => {
     if (!headersSent) {
       console.error(`[${videoId}] Timeout waiting for first chunk`);
