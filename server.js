@@ -12,6 +12,26 @@ const MIME = {
 
 const STATIC = __dirname;
 
+// Очередь для ограничения параллельных запросов (макс. 1 одновременная обработка)
+let queue = [];
+let processing = false;
+const MAX_CONCURRENT = 1; // можно увеличить, но помните о ресурсах
+
+function processQueue() {
+  if (processing || queue.length === 0) return;
+  processing = true;
+  const { videoId, res } = queue.shift();
+  handleYt(videoId, res, () => {
+    processing = false;
+    processQueue();
+  });
+}
+
+function enqueue(videoId, res) {
+  queue.push({ videoId, res });
+  processQueue();
+}
+
 function serveFile(res, filePath) {
   const ext = path.extname(filePath);
   const ct = MIME[ext] || 'application/octet-stream';
@@ -25,11 +45,10 @@ function serveFile(res, filePath) {
   }
 }
 
-function handleYt(videoId, res) {
+function handleYt(videoId, res, doneCallback) {
   const url = 'https://www.youtube.com/watch?v=' + videoId;
   console.log('yt-dlp for', videoId);
 
-  // Базовые аргументы
   const args = [
     '-f', 'bestaudio',
     '--no-playlist',
@@ -39,21 +58,21 @@ function handleYt(videoId, res) {
     url,
   ];
 
-  // Если файл cookies.txt существует, добавляем его
   if (fs.existsSync(path.join(__dirname, 'cookies.txt'))) {
     args.unshift('--cookies', 'cookies.txt');
     console.log('Using cookies.txt');
   }
+
+  let headersSent = false;
+  let stderr = '';
+  let stdoutClosed = false;
+  let processExited = false;
 
   const proc = spawn('yt-dlp', args, {
     timeout: 120000,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  let headersSent = false;
-  let stderr = '';
-
-  // Безопасная отправка заголовков и данных
   const sendHeaders = () => {
     if (!headersSent) {
       res.writeHead(200, {
@@ -71,16 +90,17 @@ function handleYt(videoId, res) {
   });
 
   proc.stdout.on('end', () => {
+    stdoutClosed = true;
     if (headersSent) {
       res.end();
     } else {
-      // Если данные так и не пришли – ошибка
       console.error('yt-dlp ended without sending any data');
       if (!res.headersSent) {
         res.writeHead(502);
         res.end('yt-dlp failed: no data received');
       }
     }
+    checkDone();
   });
 
   proc.stderr.on('data', (d) => {
@@ -96,38 +116,57 @@ function handleYt(videoId, res) {
     } else {
       res.end();
     }
+    checkDone();
   });
 
   proc.on('close', (code) => {
+    processExited = true;
     if (code !== 0) {
       console.error('yt-dlp exit code', code, 'stderr:', stderr.slice(0, 500));
       if (!headersSent && !res.headersSent) {
         res.writeHead(502);
         res.end('yt-dlp failed: ' + stderr.slice(0, 300));
       } else if (headersSent) {
-        res.end();
+        // Если уже отправили заголовки, просто закрываем ответ, если он еще не закрыт
+        if (!res.writableEnded) res.end();
       }
     } else {
       console.log('yt-dlp finished successfully');
       if (!headersSent && !res.headersSent) {
-        // Если процесс завершился успешно, но данных не было – странно, но отправим ошибку
         res.writeHead(502);
         res.end('yt-dlp returned empty output');
       }
     }
+    checkDone();
   });
 
   // Таймаут на получение первого чанка (60 секунд)
   const timeout = setTimeout(() => {
     if (!headersSent) {
       console.error('yt-dlp timeout');
-      proc.kill();
+      proc.kill('SIGTERM');
       if (!res.headersSent) {
         res.writeHead(504);
         res.end('yt-dlp timeout');
       }
     }
   }, 60000);
+
+  // Функция проверки завершения процесса и очистки
+  function checkDone() {
+    if (stdoutClosed && processExited) {
+      clearTimeout(timeout);
+      if (doneCallback) doneCallback();
+    }
+  }
+
+  // Принудительное завершение при закрытии соединения клиентом
+  res.on('close', () => {
+    if (!headersSent) {
+      proc.kill('SIGTERM');
+      clearTimeout(timeout);
+    }
+  });
 }
 
 http.createServer((req, res) => {
@@ -139,7 +178,9 @@ http.createServer((req, res) => {
       res.writeHead(400);
       return res.end('Invalid video ID');
     }
-    return handleYt(videoId, res);
+    // Постановка в очередь
+    enqueue(videoId, res);
+    return;
   }
   if (url.pathname === '/api/health') {
     res.writeHead(200);
