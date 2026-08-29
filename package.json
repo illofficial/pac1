@@ -1,5 +1,7 @@
 {
   "name": "pac1",
   "version": "1.0.0",
-  "dependencies": {}
+  "dependencies": {
+    "firebase-admin": "^12.0.0"
+  }
 }
