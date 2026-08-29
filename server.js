@@ -38,28 +38,25 @@ function fetchWithApify(videoId, res) {
     return fetchWithYtDlpProxy(videoId, res);
   }
 
-  console.log(`[${videoId}] Trying Apify`);
+  console.log(`[${videoId}] Trying Apify (bernardo/youtube-downloader)`);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
   const input = {
-    videos: [{ url: url }],
-    proxyConfiguration: {
-      useApifyProxy: true,
-      apifyProxyGroups: ['RESIDENTIAL'],
-    },
+    link: url,
+    quality: 'mp3',
   };
 
   const payload = JSON.stringify(input);
   const options = {
     hostname: 'api.apify.com',
     port: 443,
-    path: `/v2/acts/utils~youtube-link/run-sync-get-dataset-items?token=${APIFY_TOKEN}`,
+    path: `/v2/acts/bernardo~youtube-downloader/run-sync-get-dataset-items?token=${APIFY_TOKEN}`,
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(payload),
     },
-    timeout: 60000,
+    timeout: 180000, // увеличен до 3 минут
   };
 
   const req = https.request(options, (apiRes) => {
@@ -76,72 +73,32 @@ function fetchWithApify(videoId, res) {
         }
 
         const item = result[0];
-        console.log(`[${videoId}] Apify item: ${item.title || 'no title'}`);
-
-        // Проверяем, есть ли аудиоформаты
-        let audioFormats = [];
-        if (item.audioFormats && Array.isArray(item.audioFormats)) {
-          audioFormats = item.audioFormats;
-        }
-        // Также проверим видеоформаты с аудиодорожкой
-        if (item.videoFormats && Array.isArray(item.videoFormats)) {
-          for (const fmt of item.videoFormats) {
-            if (fmt.audioBitrate) {
-              audioFormats.push({ url: fmt.url, bitrate: fmt.audioBitrate || fmt.bitrate, ext: 'mp4' });
-            }
-          }
-        }
-
-        if (audioFormats.length === 0) {
-          throw new Error('No audio formats found');
-        }
-
-        // Предпочтение: mp4/m4a, затем webm, затем любой другой
-        const preferredTypes = ['audio/mp4', 'audio/x-m4a', 'audio/webm'];
-        let selected = null;
-        for (const type of preferredTypes) {
-          selected = audioFormats.find(f => f.url && f.contentType && f.contentType.includes(type));
-          if (selected) break;
-        }
-        if (!selected) {
-          selected = audioFormats.find(f => f.url && f.contentType && f.contentType.startsWith('audio/'));
-        }
-        if (!selected) {
-          // Если нет contentType, берём первый попавшийся url
-          selected = audioFormats.find(f => f.url);
-        }
-        if (!selected || !selected.url) {
+        let audioUrl = item.url || item.file || item.downloadUrl || item.audio || item.link;
+        if (!audioUrl) {
+          console.error(`[${videoId}] Apify response fields:`, Object.keys(item));
           throw new Error('No audio URL found');
         }
 
-        const audioUrl = selected.url;
-        console.log(`[${videoId}] Selected audio URL: ${audioUrl}`);
+        console.log(`[${videoId}] Audio URL: ${audioUrl}`);
 
-        // Делаем запрос к аудио-ссылке, чтобы убедиться, что это аудио
-        const audioReq = https.get(audioUrl, { timeout: 15000 }, (audioRes) => {
+        const audioReq = https.get(audioUrl, { timeout: 30000 }, (audioRes) => {
           const contentType = audioRes.headers['content-type'] || '';
-          console.log(`[${videoId}] Audio response status: ${audioRes.statusCode}, Content-Type: ${contentType}`);
+          console.log(`[${videoId}] Audio response: ${audioRes.statusCode}, Content-Type: ${contentType}`);
 
           if (audioRes.statusCode !== 200) {
             throw new Error(`Audio stream returned ${audioRes.statusCode}`);
           }
-
           if (!contentType.startsWith('audio/')) {
-            // Если не аудио, возможно, это HTML-страница с ошибкой
-            // Прочитаем немного данных и выведем в лог
+            // Если не аудио, выведем первые 200 символов
             let body = '';
-            audioRes.on('data', chunk => {
-              body += chunk.toString('utf8', 0, 500);
-              audioRes.destroy();
-            });
+            audioRes.on('data', chunk => body += chunk.toString('utf8', 0, 200));
             audioRes.on('end', () => {
-              console.error(`[${videoId}] Non-audio response: ${body.slice(0, 300)}`);
-              throw new Error('Received non-audio content');
+              console.error(`[${videoId}] Non-audio response: ${body}`);
+              if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
             });
             return;
           }
 
-          // Всё хорошо, передаём клиенту
           res.writeHead(200, {
             'Content-Type': 'audio/mp4',
             'X-Audio-Title': encodeURIComponent(item.title || 'youtube_audio'),
@@ -159,10 +116,10 @@ function fetchWithApify(videoId, res) {
           }
         });
 
-        audioReq.setTimeout(15000, () => {
+        audioReq.setTimeout(30000, () => {
           audioReq.destroy();
           if (!res.headersSent) {
-            console.error(`[${videoId}] Apify audio timeout, falling back`);
+            console.error(`[${videoId}] Apify audio timeout`);
             fetchWithYtDlpProxy(videoId, res);
           }
         });
@@ -181,7 +138,7 @@ function fetchWithApify(videoId, res) {
 
   req.on('timeout', () => {
     req.destroy();
-    console.error(`[${videoId}] Apify timeout`);
+    console.error(`[${videoId}] Apify request timeout`);
     fetchWithYtDlpProxy(videoId, res);
   });
 
