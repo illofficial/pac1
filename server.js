@@ -1,36 +1,16 @@
 const http = require('http');
-const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const ytdl = require('ytdl-core');
 
 const PORT = process.env.PORT || 80;
+const STATIC = __dirname;
+
 const MIME = {
   '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
   '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json',
   '.wav': 'audio/wav', '.mp3': 'audio/mpeg',
 };
-
-const STATIC = __dirname;
-
-// Очередь для ограничения параллельных запросов (макс. 1 одновременная обработка)
-let queue = [];
-let processing = false;
-const MAX_CONCURRENT = 1; // можно увеличить, но помните о ресурсах
-
-function processQueue() {
-  if (processing || queue.length === 0) return;
-  processing = true;
-  const { videoId, res } = queue.shift();
-  handleYt(videoId, res, () => {
-    processing = false;
-    processQueue();
-  });
-}
-
-function enqueue(videoId, res) {
-  queue.push({ videoId, res });
-  processQueue();
-}
 
 function serveFile(res, filePath) {
   const ext = path.extname(filePath);
@@ -45,34 +25,16 @@ function serveFile(res, filePath) {
   }
 }
 
-function handleYt(videoId, res, doneCallback) {
+function handleYt(videoId, res) {
   const url = 'https://www.youtube.com/watch?v=' + videoId;
-  console.log('yt-dlp for', videoId);
+  console.log(`[${videoId}] Starting ytdl-core`);
 
-  const args = [
-    '-f', 'bestaudio',
-    '--no-playlist',
-    '--no-check-certificates',
-    '--js-runtime', 'node',
-    '-o', '-',
-    url,
-  ];
-
-  if (fs.existsSync(path.join(__dirname, 'cookies.txt'))) {
-    args.unshift('--cookies', 'cookies.txt');
-    console.log('Using cookies.txt');
-  }
-
-  let headersSent = false;
-  let stderr = '';
-  let stdoutClosed = false;
-  let processExited = false;
-
-  const proc = spawn('yt-dlp', args, {
-    timeout: 120000,
-    stdio: ['ignore', 'pipe', 'pipe'],
+  const stream = ytdl(url, {
+    quality: 'highestaudio',
+    requestOptions: { timeout: 60000 },
   });
 
+  let headersSent = false;
   const sendHeaders = () => {
     if (!headersSent) {
       res.writeHead(200, {
@@ -80,93 +42,49 @@ function handleYt(videoId, res, doneCallback) {
         'X-Audio-Title': encodeURIComponent('youtube_audio'),
       });
       headersSent = true;
-      console.log('Streaming started');
+      console.log(`[${videoId}] Headers sent, streaming`);
     }
   };
 
-  proc.stdout.on('data', (chunk) => {
+  stream.on('data', (chunk) => {
     sendHeaders();
     res.write(chunk);
   });
 
-  proc.stdout.on('end', () => {
-    stdoutClosed = true;
+  stream.on('end', () => {
     if (headersSent) {
       res.end();
+      console.log(`[${videoId}] Stream finished`);
     } else {
-      console.error('yt-dlp ended without sending any data');
+      console.error(`[${videoId}] No data received`);
       if (!res.headersSent) {
         res.writeHead(502);
-        res.end('yt-dlp failed: no data received');
+        res.end('No audio data');
       }
     }
-    checkDone();
   });
 
-  proc.stderr.on('data', (d) => {
-    stderr += d.toString();
-    console.error('yt-dlp stderr:', d.toString());
-  });
-
-  proc.on('error', (err) => {
-    console.error('yt-dlp spawn error:', err.message);
+  stream.on('error', (err) => {
+    console.error(`[${videoId}] ytdl error:`, err.message);
     if (!headersSent && !res.headersSent) {
       res.writeHead(502);
-      res.end('yt-dlp error: ' + err.message);
+      res.end('ytdl error: ' + err.message);
     } else {
       res.end();
     }
-    checkDone();
   });
 
-  proc.on('close', (code) => {
-    processExited = true;
-    if (code !== 0) {
-      console.error('yt-dlp exit code', code, 'stderr:', stderr.slice(0, 500));
-      if (!headersSent && !res.headersSent) {
-        res.writeHead(502);
-        res.end('yt-dlp failed: ' + stderr.slice(0, 300));
-      } else if (headersSent) {
-        // Если уже отправили заголовки, просто закрываем ответ, если он еще не закрыт
-        if (!res.writableEnded) res.end();
-      }
-    } else {
-      console.log('yt-dlp finished successfully');
-      if (!headersSent && !res.headersSent) {
-        res.writeHead(502);
-        res.end('yt-dlp returned empty output');
-      }
-    }
-    checkDone();
-  });
-
-  // Таймаут на получение первого чанка (60 секунд)
+  // Таймаут 60 секунд на первый чанк
   const timeout = setTimeout(() => {
     if (!headersSent) {
-      console.error('yt-dlp timeout');
-      proc.kill('SIGTERM');
+      console.error(`[${videoId}] Timeout waiting for first chunk`);
+      stream.destroy();
       if (!res.headersSent) {
         res.writeHead(504);
-        res.end('yt-dlp timeout');
+        res.end('Timeout');
       }
     }
   }, 60000);
-
-  // Функция проверки завершения процесса и очистки
-  function checkDone() {
-    if (stdoutClosed && processExited) {
-      clearTimeout(timeout);
-      if (doneCallback) doneCallback();
-    }
-  }
-
-  // Принудительное завершение при закрытии соединения клиентом
-  res.on('close', () => {
-    if (!headersSent) {
-      proc.kill('SIGTERM');
-      clearTimeout(timeout);
-    }
-  });
 }
 
 http.createServer((req, res) => {
@@ -178,9 +96,7 @@ http.createServer((req, res) => {
       res.writeHead(400);
       return res.end('Invalid video ID');
     }
-    // Постановка в очередь
-    enqueue(videoId, res);
-    return;
+    return handleYt(videoId, res);
   }
   if (url.pathname === '/api/health') {
     res.writeHead(200);
@@ -190,4 +106,4 @@ http.createServer((req, res) => {
   let filePath = path.join(STATIC, url.pathname === '/' ? 'index.html' : url.pathname);
   if (!path.extname(filePath)) filePath = path.join(STATIC, 'index.html');
   serveFile(res, filePath);
-}).listen(PORT, () => console.log('PAC1 on port ' + PORT));
+}).listen(PORT, () => console.log(`Server running on port ${PORT}`));
