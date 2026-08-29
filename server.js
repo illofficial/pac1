@@ -29,46 +29,60 @@ function handleYt(videoId, res) {
   const url = 'https://www.youtube.com/watch?v=' + videoId;
   console.log('yt-dlp for', videoId);
 
-  // Ключевые аргументы для стабильной работы:
-  // -f bestaudio -- скачиваем только аудио
-  // --no-playlist -- отключаем плейлисты
-  // --no-check-certificates -- игнорируем проблемы с сертификатами (может помочь)
-  // --js-runtime node -- указываем использовать Node.js для JS-рантайма
-  // -o - -- выводим результат в stdout
+  // Запускаем процесс
   const proc = spawn('yt-dlp', [
     '-f', 'bestaudio',
     '--no-playlist',
     '--no-check-certificates',
-    '--js-runtime', 'node',
+    '--js-runtime', 'node',   // обязательно!
     '-o', '-',
     url,
   ], {
-    timeout: 120000, // Увеличиваем таймаут до 2 минут
-    stdio: ['ignore', 'pipe', 'pipe']
+    timeout: 120000,
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
 
-  // Отправляем заголовки, что будет поток аудио
-  res.writeHead(200, {
-    'Content-Type': 'audio/mp4', // или 'audio/webm', но mp4 чаще работает
-    'X-Audio-Title': encodeURIComponent('youtube_audio'),
-  });
-
-  let first = true;
-  proc.stdout.on('data', (chunk) => {
-    if (first) { console.log('  streaming audio, first chunk:', chunk.length, 'bytes'); first = false; }
-    res.write(chunk);
-  });
-  proc.stdout.on('end', () => res.end());
-
+  let headersSent = false;
   let stderr = '';
+  let firstChunkReceived = false;
+
+  // Обработка stdout – первый чанк означает, что аудио пошло
+  proc.stdout.on('data', (chunk) => {
+    if (!headersSent) {
+      // Отправляем заголовки прямо перед первой записью
+      res.writeHead(200, {
+        'Content-Type': 'audio/mp4',
+        'X-Audio-Title': encodeURIComponent('youtube_audio'),
+      });
+      headersSent = true;
+      console.log('Streaming started, first chunk size:', chunk.length);
+    }
+    res.write(chunk);
+    firstChunkReceived = true;
+  });
+
+  proc.stdout.on('end', () => {
+    if (headersSent) res.end();
+    else {
+      // Если процесс завершился, а мы так и не отправили заголовки – ошибка
+      if (!headersSent) {
+        console.error('yt-dlp ended without sending any data');
+        res.writeHead(502);
+        res.end('yt-dlp failed: no data received');
+      }
+    }
+  });
+
+  // Собираем stderr для диагностики
   proc.stderr.on('data', (d) => {
     stderr += d.toString();
     console.error('yt-dlp stderr:', d.toString());
   });
 
+  // Ошибка запуска
   proc.on('error', (e) => {
     console.error('yt-dlp spawn error:', e.message);
-    if (!res.headersSent) {
+    if (!headersSent) {
       res.writeHead(502);
       res.end('yt-dlp error: ' + e.message);
     } else {
@@ -76,19 +90,31 @@ function handleYt(videoId, res) {
     }
   });
 
+  // Завершение процесса
   proc.on('close', (code) => {
-    if (code !== 0) {
-      console.error('yt-dlp exit with code', code, 'stderr:', stderr.slice(0, 500));
-      if (!res.headersSent) {
-        res.writeHead(502);
-        res.end('yt-dlp failed: ' + stderr.slice(0, 300));
-      } else {
-        res.end();
-      }
+    if (code !== 0 && !headersSent) {
+      console.error('yt-dlp exit code', code, 'stderr:', stderr.slice(0, 500));
+      res.writeHead(502);
+      res.end('yt-dlp failed: ' + stderr.slice(0, 300));
+    } else if (code !== 0 && headersSent) {
+      // Если процесс упал уже после отправки данных – просто завершаем ответ
+      console.error('yt-dlp crashed during streaming, code', code);
+      res.end();
     } else {
       console.log('yt-dlp finished successfully');
+      if (headersSent) res.end();
     }
   });
+
+  // Таймаут на случай, если процесс висит
+  const timeout = setTimeout(() => {
+    if (!headersSent) {
+      console.error('yt-dlp timeout, killing process');
+      proc.kill();
+      res.writeHead(504);
+      res.end('yt-dlp timeout');
+    }
+  }, 60000); // 60 секунд на первый чанк
 }
 
 http.createServer((req, res) => {
