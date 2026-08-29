@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://inv.nadeko.net https://invidious.fdn.fr https://yt.artemislena.eu https://invidious.perennialte.ch https://vid.puffyan.us; media-src 'self' blob:; img-src 'self' data: blob:;">
 <title>Premium Audio Converter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -357,9 +358,9 @@
     <section class="screen active" id="screen-input">
       <div class="field-label">direct link to an audio file</div>
       <div class="url-box">
-        <input id="src-url" type="text" placeholder="https://example.com/track.mp3" autocomplete="off" spellcheck="false">
+        <input id="src-url" type="text" placeholder="https://youtube.com/watch?v=... or mp3/wav link" autocomplete="off" spellcheck="false">
       </div>
-      <div class="hint">mp3 / wav / ogg / flac · limit — <b>10 minutes</b> · output in <b>WAV</b></div>
+      <div class="hint">mp3 / wav / ogg / flac · youtube links · limit — <b>10 minutes</b> · output in <b>WAV</b></div>
       <div class="hint">if the link won't load, the host is probably blocking CORS. Just upload the file below instead.</div>
 
       <div class="divider">or</div>
@@ -1993,8 +1994,84 @@
 
   function fmt(v, digits){ return (typeof v === 'number' && isFinite(v)) ? v.toFixed(digits==null?2:digits) : '—'; }
 
-  function isLikelyYoutubePage(v){
-    return /youtube\.com\/watch|youtu\.be\//i.test(v.trim());
+  function extractYoutubeId(v){
+    const url = v.trim();
+    let m = url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+    m = url.match(/youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+    m = url.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+    return null;
+  }
+
+  const INVIDIOUS_INSTANCES = [
+    'https://inv.nadeko.net',
+    'https://invidious.fdn.fr',
+    'https://yt.artemislena.eu',
+    'https://invidious.perennialte.ch',
+    'https://vid.puffyan.us',
+  ];
+
+  async function fetchYoutubeAudio(videoId, onProgress){
+    onProgress(0.03);
+    let lastError = null;
+    for (const instance of INVIDIOUS_INSTANCES) {
+      try {
+        const apiUrl = `${instance}/api/v1/videos/${videoId}?fields=title,adaptiveFormats`;
+        const resp = await fetch(apiUrl);
+        if (!resp.ok) continue;
+        const info = await resp.json();
+        onProgress(0.12);
+        const audioFormats = (info.adaptiveFormats || [])
+          .filter(f => f.type && f.type.startsWith('audio/'))
+          .sort((a, b) => {
+            const score = t => { if (t.includes('opus')) return 3; if (t.includes('mp4')) return 2; return 1; };
+            return score(b.type) - score(a.type);
+          });
+        if (!audioFormats.length) { lastError = new Error('no audio stream'); continue; }
+        const fmt = audioFormats[0];
+        const proxyUrl = fmt.url && !fmt.url.startsWith('http')
+          ? `${instance}${fmt.url}`
+          : `${instance}/latest_version?id=${videoId}&itag=${fmt.itag}&local=true`;
+        onProgress(0.18);
+        const audioResp = await fetch(proxyUrl);
+        if (!audioResp.ok) continue;
+        const total = Number(audioResp.headers.get('content-length')) || 0;
+        if (!audioResp.body || !total) {
+          onProgress(0.6);
+          const blob = await audioResp.blob();
+          onProgress(0.95);
+          return { blob, title: info.title || 'youtube_audio' };
+        }
+        const reader = audioResp.body.getReader();
+        let received = 0;
+        const chunks = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          onProgress(0.18 + (received / total) * 0.77);
+        }
+        return { blob: new Blob(chunks), title: info.title || 'youtube_audio' };
+      } catch (e) { lastError = e; }
+    }
+    throw new Error('could not fetch YouTube audio: ' + (lastError?.message || 'all instances unreachable. Try uploading the file directly.'));
+  }
+
+  function isSafeUrl(v){
+    try {
+      const u = new URL(v.trim());
+      if (u.protocol !== 'https:') return false;
+      const host = u.hostname.toLowerCase();
+      if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') return false;
+      if (host.match(/^10\.\d+\.\d+\.\d+$/)) return false;
+      if (host.match(/^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/)) return false;
+      if (host.match(/^192\.168\.\d+\.\d+$/)) return false;
+      if (host.match(/^169\.254\.\d+\.\d+$/)) return false;
+      return true;
+    } catch { return false; }
   }
 
   async function fetchWithProgress(url, onProgress){
@@ -2156,13 +2233,6 @@
       inputError.classList.add('show');
       return;
     }
-    if(url && isLikelyYoutubePage(url)){
-      inputError.textContent = '⚠ this is a YouTube page link, not an audio file. This tool does not download from YouTube directly — paste a direct .mp3/.wav link or upload a file manually.';
-      void inputError.offsetWidth;
-      inputError.classList.add('show');
-      return;
-    }
-
     revokeAll();
     showScreen('loading');
     setProgress(0);
@@ -2175,8 +2245,18 @@
         sourceLabel = file.name;
         setProgress(8);
       } else {
-        sourceLabel = url.split('/').pop() || 'track';
-        blob = await fetchWithProgress(url, (frac) => setProgress(frac*10));
+        const ytId = extractYoutubeId(url);
+        if (ytId) {
+          const yt = await fetchYoutubeAudio(ytId, (frac) => setProgress(frac * 10));
+          blob = yt.blob;
+          sourceLabel = yt.title;
+        } else {
+          if (!isSafeUrl(url)) {
+            throw new Error('URL is not allowed — only https:// public URLs are supported. For local files, use the upload button below.');
+          }
+          sourceLabel = url.split('/').pop() || 'track';
+          blob = await fetchWithProgress(url, (frac) => setProgress(frac * 10));
+        }
       }
 
       const origObjUrl = trackUrl(URL.createObjectURL(blob));
