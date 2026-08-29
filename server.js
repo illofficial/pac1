@@ -72,7 +72,6 @@ function fetchWithApify(videoId, res) {
       console.log(`[${videoId}] Apify response body (first 500 chars):`, data.slice(0, 500));
 
       try {
-        // Успешные статусы: 200 или 201 (создано)
         if (apiRes.statusCode !== 200 && apiRes.statusCode !== 201) {
           throw new Error(`Apify API returned ${apiRes.statusCode}: ${data.slice(0, 500)}`);
         }
@@ -85,56 +84,63 @@ function fetchWithApify(videoId, res) {
         console.log(`[${videoId}] Item keys:`, Object.keys(item));
         console.log(`[${videoId}] Title: ${item.title}`);
 
-        // У актора utils/youtube-link ответ содержит поле downloadUrl
         if (!item.ok || !item.downloadUrl) {
           throw new Error('Download URL missing in response');
         }
-        const audioUrl = item.downloadUrl;
-        console.log(`[${videoId}] Download URL: ${audioUrl}`);
+        const downloadUrl = item.downloadUrl;
+        console.log(`[${videoId}] Download URL: ${downloadUrl}`);
 
-        // Скачиваем аудио по ссылке и передаём клиенту
-        const audioReq = https.get(audioUrl, { timeout: 120000 }, (audioRes) => {
-          const contentType = audioRes.headers['content-type'] || '';
-          console.log(`[${videoId}] Audio response: ${audioRes.statusCode}, Content-Type: ${contentType}`);
-
-          if (audioRes.statusCode !== 200) {
-            throw new Error(`Audio stream returned ${audioRes.statusCode}`);
-          }
-          if (!contentType.startsWith('audio/')) {
-            let body = '';
-            audioRes.on('data', chunk => {
-              body += chunk.toString('utf8', 0, 300);
-              audioRes.destroy();
-            });
-            audioRes.on('end', () => {
-              console.error(`[${videoId}] Non-audio response: ${body}`);
-              throw new Error(`Non-audio content: ${contentType}`);
-            });
-            return;
+        // 1. Скачиваем WebM с Apify
+        https.get(downloadUrl, { timeout: 120000 }, (webmRes) => {
+          if (webmRes.statusCode !== 200) {
+            throw new Error(`WebM download failed: ${webmRes.statusCode}`);
           }
 
+          const contentType = webmRes.headers['content-type'] || '';
+          console.log(`[${videoId}] WebM response: ${webmRes.statusCode}, Content-Type: ${contentType}`);
+
+          // 2. Запускаем ffmpeg для конвертации в WAV
+          const ffmpeg = spawn('ffmpeg', [
+            '-i', 'pipe:0',           // вход из stdin
+            '-f', 'wav',              // выходной формат WAV
+            '-acodec', 'pcm_s16le',   // 16-bit PCM
+            '-ar', '44100',           // частота 44.1 кГц
+            '-ac', '2',               // стерео
+            'pipe:1'                  // выход в stdout
+          ]);
+
+          // Передаём WebM в stdin ffmpeg
+          webmRes.pipe(ffmpeg.stdin);
+
+          // Отправляем результат клиенту
           res.writeHead(200, {
-            'Content-Type': 'audio/webm', // Apify возвращает WebM
+            'Content-Type': 'audio/wav',
             'X-Audio-Title': encodeURIComponent(item.title || 'youtube_audio'),
           });
-          audioRes.pipe(res);
-          audioRes.on('end', () => console.log(`[${videoId}] Apify stream finished`));
-        });
 
-        audioReq.on('error', (err) => {
-          console.error(`[${videoId}] Apify audio error:`, err.message);
-          if (!res.headersSent) {
-            fetchWithYtDlpProxy(videoId, res);
-          } else {
-            res.end();
-          }
-        });
-        audioReq.setTimeout(120000, () => {
-          audioReq.destroy();
-          if (!res.headersSent) {
-            console.error(`[${videoId}] Apify audio timeout`);
-            fetchWithYtDlpProxy(videoId, res);
-          }
+          ffmpeg.stdout.pipe(res);
+
+          ffmpeg.on('error', (err) => {
+            console.error(`[${videoId}] ffmpeg error:`, err.message);
+            if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
+          });
+
+          ffmpeg.on('close', (code) => {
+            if (code !== 0) {
+              console.error(`[${videoId}] ffmpeg exited with code ${code}`);
+              if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
+            } else {
+              console.log(`[${videoId}] ffmpeg finished successfully`);
+            }
+          });
+
+          webmRes.on('error', (err) => {
+            console.error(`[${videoId}] WebM download error:`, err.message);
+            if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
+          });
+        }).on('error', (err) => {
+          console.error(`[${videoId}] Failed to fetch downloadUrl:`, err.message);
+          if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
         });
       } catch (err) {
         console.error(`[${videoId}] Apify error:`, err.message);
