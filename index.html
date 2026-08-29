@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://inv.nadeko.net https://invidious.fdn.fr https://yt.artemislena.eu https://invidious.perennialte.ch https://vid.puffyan.us; media-src 'self' blob:; img-src 'self' data: blob:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://inv.nadeko.net https://invidious.fdn.fr https://yt.artemislena.eu https://invidious.perennialte.ch https://vid.puffyan.us; media-src 'self' blob:; img-src 'self' data: blob:;">
 <title>Premium Audio Converter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -331,6 +331,62 @@
 
   .footer-note{ text-align:center; font-size:12px; color:#4d4d84; margin-top:20px; letter-spacing:0.4px; }
 
+  /* ---------- SCREEN 5 : LOGIN ---------- */
+  .login-title{
+    font-family:var(--font-display); font-size:clamp(16px,4vw,20px); text-align:center;
+    color:var(--yellow); letter-spacing:2px; margin:6px 0 4px;
+    text-shadow:0 0 8px rgba(255,212,0,0.6);
+  }
+  .login-sub{ text-align:center; font-size:14px; color:#6b6bb0; margin-bottom:18px; line-height:1.4; }
+  .login-form{ margin:10px 0; }
+  .login-form .field-label{ margin-bottom:4px; font-size:13px; }
+  .login-form input{
+    width:100%; background:#000; border:2px solid var(--wall-dark); outline:none;
+    color:var(--yellow); font-family:var(--font-body); font-size:17px; letter-spacing:0.4px;
+    padding:10px 10px; margin-bottom:12px;
+  }
+  .login-form input:focus{ border-color:var(--cyan); }
+  .login-form input::placeholder{ color:var(--yellow-dim); opacity:0.5; }
+  .login-footer{ text-align:center; font-size:13px; color:#6b6bb0; margin-top:8px; letter-spacing:0.3px; }
+  .login-footer a{ color:var(--cyan); text-decoration:underline; cursor:pointer; }
+
+  /* ---------- SCREEN 6 : PAYWALL ---------- */
+  .paywall-title{
+    font-family:var(--font-display); font-size:clamp(18px,5vw,24px); text-align:center;
+    color:var(--yellow); letter-spacing:2px; margin:4px 0 2px;
+    text-shadow:0 0 8px rgba(255,212,0,0.6);
+  }
+  .paywall-sub{ text-align:center; font-size:14px; color:#6b6bb0; margin-bottom:14px; line-height:1.4; }
+  .plan-list{ display:flex; flex-direction:column; gap:10px; margin:8px 0 16px; }
+  .plan-card{
+    border:3px solid var(--wall-dark); background:#000; padding:14px 14px;
+    cursor:pointer; text-align:center; transition:border-color .12s, box-shadow .12s;
+  }
+  .plan-card:hover{ border-color:var(--cyan); }
+  .plan-card.selected{ border-color:var(--yellow); box-shadow:0 0 14px rgba(255,212,0,0.35); }
+  .plan-card .plan-price{
+    font-family:var(--font-display); font-size:clamp(18px,5vw,26px); color:var(--yellow);
+    letter-spacing:1px; text-shadow:0 0 8px rgba(255,212,0,0.5);
+  }
+  .plan-card .plan-label{ font-size:15px; color:var(--dot); margin-top:4px; letter-spacing:0.3px; }
+  .plan-card .plan-badge{
+    display:inline-block; font-size:11px; color:#000; background:var(--cyan);
+    padding:2px 8px; letter-spacing:1px; margin-top:6px;
+  }
+  .plan-card .plan-badge.best{ background:var(--yellow); color:#000; }
+  .plan-note{ text-align:center; font-size:12px; color:#4d4d84; margin-top:10px; line-height:1.4; }
+  .plan-note a{ color:var(--cyan); text-decoration:underline; cursor:pointer; }
+
+  .footer-trials{
+    display:flex; align-items:center; justify-content:center; gap:4px; margin-top:8px;
+  }
+  .footer-trials .dot{ width:5px;height:5px;background:var(--yellow); }
+  .footer-trials .dot.used{background:var(--yellow-dim);}
+  .footer-trials .dot.locked{background:var(--red);}
+
+  .remaining-hint{ font-size:13px; color:#6b6bb0; text-align:center; margin-top:10px; letter-spacing:0.3px; }
+  .remaining-hint b{ color:var(--yellow); }
+
   @media (prefers-reduced-motion: reduce){
     .win-title{animation:none;} .screen.active{animation:none;}
     .header-eq span{animation:none; height:40%;}
@@ -381,6 +437,8 @@
         <div class="genre-btn genre-btn--character" data-genre="tape">📼 Tape / VHS</div>
       </div>
       <div class="hint">target — −11/−12 LUFS (firmly normalized to target) · true peak −1 dB · <span style="color:#c87941">orange = character / sample-prep modes</span></div>
+
+      <div class="remaining-hint">free conversions today: <span id="trials-remaining">3</span> / 3</div>
 
       <div class="error-msg" id="input-error">⚠ paste a link or choose a file</div>
       <button class="btn" id="start-btn">START</button>
@@ -433,6 +491,60 @@
       <div class="stats-block" id="stats-block"></div>
 
       <button class="btn ghost" id="restart-btn">CONVERT ANOTHER TRACK</button>
+    </section>
+
+    <!-- SCREEN 5 — LOGIN -->
+    <section class="screen" id="screen-login">
+      <div class="login-title">FREE TRIAL USED</div>
+      <div class="login-sub">3 conversions per day are free. Sign in to get 3 more — or go unlimited.</div>
+
+      <div class="remaining-hint" id="login-trials-hint"></div>
+
+      <div class="login-form">
+        <div class="field-label">email</div>
+        <input id="login-email" type="email" placeholder="you@example.com" autocomplete="email" spellcheck="false">
+        <div class="field-label">password</div>
+        <input id="login-password" type="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+
+      <button class="btn" id="login-btn" style="margin-top:6px;">SIGN IN</button>
+
+      <div class="login-footer">
+        <a id="login-switch">no account? create one</a>
+      </div>
+
+      <div class="error-msg" id="login-error" style="margin-top:12px;"></div>
+      <button class="btn ghost" id="login-back-btn" style="margin-top:8px;">BACK</button>
+    </section>
+
+    <!-- SCREEN 6 — PAYWALL -->
+    <section class="screen" id="screen-paywall">
+      <div class="paywall-title">UNLOCK UNLIMITED</div>
+      <div class="paywall-sub">you've used your daily conversions. choose a plan to keep going.</div>
+
+      <div class="remaining-hint" id="paywall-trials-hint"></div>
+
+      <div class="plan-list" id="plan-list">
+        <div class="plan-card" data-plan="weekly">
+          <div class="plan-price">$5</div>
+          <div class="plan-label">per week</div>
+        </div>
+        <div class="plan-card" data-plan="yearly">
+          <div class="plan-price">$30</div>
+          <div class="plan-label">per year</div>
+          <div class="plan-badge best">BEST VALUE</div>
+        </div>
+        <div class="plan-card" data-plan="lifetime">
+          <div class="plan-price">$60</div>
+          <div class="plan-label">lifetime access</div>
+          <div class="plan-badge">ONE TIME</div>
+        </div>
+      </div>
+
+      <button class="btn" id="paywall-btn" disabled>SELECT A PLAN</button>
+      <div class="plan-note">
+        <a id="paywall-back-btn">log out and go back</a>
+      </div>
     </section>
 
     <div class="footer-note">PREMIUM AUDIO CONVERTER — PROTOTYPE</div>
@@ -1874,11 +1986,179 @@
     loading: document.getElementById('screen-loading'),
     error: document.getElementById('screen-error'),
     win: document.getElementById('screen-win'),
+    login: document.getElementById('screen-login'),
+    paywall: document.getElementById('screen-paywall'),
   };
   function showScreen(name){
     Object.values(screens).forEach(s => s.classList.remove('active'));
     screens[name].classList.add('active');
+    if (name === 'input') {
+      const u = resetDailyIfNeeded(getUsage());
+      const limit = u.loggedIn ? FREE_DAILY + LOGIN_DAILY : FREE_DAILY;
+      const used = u.loggedIn ? u.freeUsed + u.loginUsed : u.freeUsed;
+      const left = Math.max(0, limit - used);
+      const el = document.getElementById('trials-remaining');
+      if (el) el.textContent = left;
+      const totalEl = document.getElementById('trials-total');
+      if (totalEl) totalEl.textContent = limit;
+    }
   }
+
+  // ---------------- usage tracking (localStorage) ----------------
+  const FREE_DAILY = 3;
+  const LOGIN_DAILY = 3;
+  const STORAGE_KEY = 'pac1_usage';
+
+  function getUsage(){
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return { date: '', freeUsed: 0, loginUsed: 0, loggedIn: false };
+      return JSON.parse(raw);
+    } catch { return { date: '', freeUsed: 0, loginUsed: 0, loggedIn: false }; }
+  }
+  function saveUsage(u){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(u)); } catch(e){}
+  }
+  function resetDailyIfNeeded(u){
+    const today = new Date().toISOString().slice(0,10);
+    if (u.date !== today) return { date: today, freeUsed: 0, loginUsed: 0, loggedIn: u.loggedIn };
+    return u;
+  }
+  function trialsLeft(u){
+    const limit = u.loggedIn ? FREE_DAILY + LOGIN_DAILY : FREE_DAILY;
+    const used = u.loggedIn ? u.freeUsed + u.loginUsed : u.freeUsed;
+    return Math.max(0, limit - used);
+  }
+  function renderTrialsDots(containerId, u){
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    const limit = u.loggedIn ? FREE_DAILY + LOGIN_DAILY : FREE_DAILY;
+    const used = u.loggedIn ? u.freeUsed + u.loginUsed : u.freeUsed;
+    el.innerHTML = '';
+    for (let i = 0; i < limit; i++) {
+      const d = document.createElement('span');
+      d.className = 'dot' + (i < used ? ' used' : '');
+      el.appendChild(d);
+    }
+  }
+  function bumpUsage(){
+    let u = resetDailyIfNeeded(getUsage());
+    if (u.loggedIn) {
+      if (u.loginUsed < LOGIN_DAILY) { u.loginUsed++; saveUsage(u); return true; }
+      if (u.freeUsed < FREE_DAILY) { u.freeUsed++; saveUsage(u); return true; }
+    } else {
+      if (u.freeUsed < FREE_DAILY) { u.freeUsed++; saveUsage(u); return true; }
+    }
+    saveUsage(u);
+    return false;
+  }
+
+  // ---------------- login / paywall UI ----------------
+  const loginEmail = document.getElementById('login-email');
+  const loginPassword = document.getElementById('login-password');
+  const loginBtn = document.getElementById('login-btn');
+  const loginError = document.getElementById('login-error');
+  const loginSwitch = document.getElementById('login-switch');
+  const loginBackBtn = document.getElementById('login-back-btn');
+  const loginTrialsHint = document.getElementById('login-trials-hint');
+  const paywallTrialsHint = document.getElementById('paywall-trials-hint');
+  const paywallBtn = document.getElementById('paywall-btn');
+  const paywallBackBtn = document.getElementById('paywall-back-btn');
+  const planList = document.getElementById('plan-list');
+
+  let selectedPlan = null;
+  let loginMode = 'signin'; // 'signin' | 'signup'
+
+  function showLoginScreen(){
+    let u = resetDailyIfNeeded(getUsage());
+    const left = trialsLeft(u);
+    loginTrialsHint.innerHTML = 'You have <b>' + left + '</b> conversion' + (left !== 1 ? 's' : '') + ' left today.';
+    loginError.classList.remove('show');
+    loginEmail.value = '';
+    loginPassword.value = '';
+    loginMode = 'signin';
+    loginBtn.textContent = 'SIGN IN';
+    loginSwitch.innerHTML = 'no account? create one';
+    showScreen('login');
+  }
+
+  function showPaywallScreen(){
+    let u = resetDailyIfNeeded(getUsage());
+    const left = trialsLeft(u);
+    paywallTrialsHint.innerHTML = 'You have <b>' + left + '</b> conversion' + (left !== 1 ? 's' : '') + ' left today.';
+    selectedPlan = null;
+    paywallBtn.disabled = true;
+    paywallBtn.textContent = 'SELECT A PLAN';
+    planList.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+    showScreen('paywall');
+  }
+
+  loginBtn.addEventListener('click', () => {
+    const email = loginEmail.value.trim();
+    const pw = loginPassword.value;
+    if (!email || !pw) {
+      loginError.textContent = '⚠ enter email and password';
+      loginError.classList.add('show');
+      return;
+    }
+    if (pw.length < 6) {
+      loginError.textContent = '⚠ password must be 6+ characters';
+      loginError.classList.add('show');
+      return;
+    }
+    // Firebase auth will be plugged in here — for now, accept any valid-looking creds
+    let u = resetDailyIfNeeded(getUsage());
+    u.loggedIn = true;
+    saveUsage(u);
+    loginError.classList.remove('show');
+    // After login, check if still have trials
+    u = resetDailyIfNeeded(getUsage());
+    if (trialsLeft(u) > 0) {
+      showScreen('input');
+    } else {
+      showPaywallScreen();
+    }
+  });
+
+  loginSwitch.addEventListener('click', () => {
+    loginMode = loginMode === 'signin' ? 'signup' : 'signin';
+    loginBtn.textContent = loginMode === 'signin' ? 'SIGN IN' : 'CREATE ACCOUNT';
+    loginSwitch.innerHTML = loginMode === 'signin' ? 'no account? create one' : 'already have an account? sign in';
+    loginError.classList.remove('show');
+  });
+
+  loginBackBtn.addEventListener('click', () => {
+    showScreen('input');
+  });
+
+  paywallBackBtn.addEventListener('click', () => {
+    let u = resetDailyIfNeeded(getUsage());
+    u.loggedIn = false;
+    saveUsage(u);
+    showScreen('input');
+  });
+
+  planList.addEventListener('click', (e) => {
+    const card = e.target.closest('.plan-card');
+    if (!card) return;
+    planList.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    selectedPlan = card.dataset.plan;
+    paywallBtn.disabled = false;
+    paywallBtn.textContent = 'SUBSCRIBE — ' + card.querySelector('.plan-price').textContent;
+  });
+
+  paywallBtn.addEventListener('click', () => {
+    if (!selectedPlan) return;
+    // Stripe / payment gateway will be plugged in here.
+    // For now, simulate success: grant unlimited for this session.
+    let u = resetDailyIfNeeded(getUsage());
+    u.loggedIn = true;
+    u.freeUsed = 0;
+    u.loginUsed = 0;
+    saveUsage(u);
+    showScreen('input');
+  });
 
   // ---------------- progress / Pac-Man UI ----------------
   const pctLabel = document.getElementById('pct');
@@ -2233,6 +2513,19 @@
       inputError.classList.add('show');
       return;
     }
+
+    // Usage gate: check trials before processing
+    const usage = resetDailyIfNeeded(getUsage());
+    const left = trialsLeft(usage);
+    if (left <= 0) {
+      if (usage.loggedIn) {
+        showPaywallScreen();
+      } else {
+        showLoginScreen();
+      }
+      return;
+    }
+
     revokeAll();
     showScreen('loading');
     setProgress(0);
@@ -2374,6 +2667,8 @@
       ].map(([k,v]) => `<div><span class="k">${k}:</span> <span class="v">${v}</span></div>`).join('');
 
       setTimeout(() => showScreen('win'), 450);
+
+      bumpUsage(); // count this conversion toward daily limit
 
     } catch(err){
       console.error(err);
