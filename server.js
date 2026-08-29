@@ -1,10 +1,19 @@
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const ytdl = require('ytdl-core');
 
 const PORT = process.env.PORT || 80;
 const STATIC = __dirname;
+
+// Список публичных инстансов Invidious (с поддержкой CORS или без)
+const INVIDIOUS_INSTANCES = [
+  'https://invidious.fdn.fr',
+  'https://inv.nadeko.net',
+  'https://invidious.perennialte.ch',
+  'https://vid.puffyan.us',
+  'https://yewtu.be',
+];
 
 const MIME = {
   '.html': 'text/html',
@@ -30,85 +39,106 @@ function serveFile(res, filePath) {
   }
 }
 
-function handleYt(videoId, res) {
-  const url = 'https://www.youtube.com/watch?v=' + videoId;
-  console.log(`[${videoId}] Starting ytdl-core`);
+function fetchInvidiousAudio(videoId, res) {
+  console.log(`[${videoId}] Trying Invidious`);
 
-  const stream = ytdl(url, {
-    quality: 'highestaudio',
-    requestOptions: { timeout: 60000 },
-  });
+  // Пробуем инстансы по очереди
+  let currentInstanceIndex = 0;
 
-  let headersSent = false;
-
-  const sendHeaders = () => {
-    if (!headersSent) {
-      res.writeHead(200, {
-        'Content-Type': 'audio/mp4',
-        'X-Audio-Title': encodeURIComponent('youtube_audio'),
-      });
-      headersSent = true;
-      console.log(`[${videoId}] Headers sent, streaming`);
+  const tryNextInstance = () => {
+    if (currentInstanceIndex >= INVIDIOUS_INSTANCES.length) {
+      console.error(`[${videoId}] All Invidious instances failed`);
+      if (!res.headersSent) {
+        res.writeHead(503);
+        res.end('All video services are unavailable');
+      }
+      return;
     }
+
+    const instance = INVIDIOUS_INSTANCES[currentInstanceIndex];
+    currentInstanceIndex++;
+    console.log(`[${videoId}] Trying instance: ${instance}`);
+
+    // Сначала получаем информацию о видео, чтобы найти аудио-поток
+    const infoUrl = `${instance}/api/v1/videos/${videoId}`;
+    const req = https.get(infoUrl, (infoRes) => {
+      let data = '';
+      infoRes.on('data', chunk => data += chunk);
+      infoRes.on('end', () => {
+        try {
+          const videoInfo = JSON.parse(data);
+          if (!videoInfo || !videoInfo.adaptiveFormats) {
+            throw new Error('No adaptive formats');
+          }
+
+          // Ищем лучший аудио-формат (предпочтение opus, затем m4a)
+          const audioFormats = videoInfo.adaptiveFormats
+            .filter(f => f.type && f.type.startsWith('audio/'))
+            .sort((a, b) => {
+              const score = (f) => {
+                if (f.type.includes('opus')) return 3;
+                if (f.type.includes('mp4')) return 2;
+                return 1;
+              };
+              return score(b) - score(a);
+            });
+
+          if (!audioFormats.length) {
+            throw new Error('No audio streams');
+          }
+
+          const bestFormat = audioFormats[0];
+          const audioUrl = bestFormat.url;
+
+          // Проксируем аудио-поток
+          const audioReq = https.get(audioUrl, (audioRes) => {
+            if (audioRes.statusCode !== 200) {
+              throw new Error(`Audio stream returned ${audioRes.statusCode}`);
+            }
+
+            res.writeHead(200, {
+              'Content-Type': 'audio/mp4',
+              'X-Audio-Title': encodeURIComponent(videoInfo.title || 'youtube_audio'),
+            });
+
+            audioRes.pipe(res);
+            audioRes.on('end', () => console.log(`[${videoId}] Stream finished`));
+          });
+
+          audioReq.on('error', (err) => {
+            console.error(`[${videoId}] Audio stream error:`, err.message);
+            if (!res.headersSent) {
+              tryNextInstance();
+            } else {
+              res.end();
+            }
+          });
+
+        } catch (err) {
+          console.error(`[${videoId}] Error parsing video info:`, err.message);
+          tryNextInstance();
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      console.error(`[${videoId}] Request to ${instance} failed:`, err.message);
+      tryNextInstance();
+    });
+
+    req.setTimeout(10000, () => {
+      req.destroy();
+      console.error(`[${videoId}] Timeout on ${instance}`);
+      tryNextInstance();
+    });
   };
 
-  stream.on('data', (chunk) => {
-    sendHeaders();
-    res.write(chunk);
-  });
+  tryNextInstance();
+}
 
-  stream.on('end', () => {
-    if (headersSent) {
-      res.end();
-      console.log(`[${videoId}] Stream finished`);
-    } else {
-      console.error(`[${videoId}] No data received`);
-      if (!res.headersSent) {
-        res.writeHead(404);
-        res.end('Video not found or no audio available');
-      }
-    }
-  });
-
-  stream.on('error', (err) => {
-    console.error(`[${videoId}] ytdl error:`, err.message);
-
-    let statusCode = 500;
-    let message = 'Internal server error';
-
-    if (err.message.includes('Status code: 410')) {
-      statusCode = 404;
-      message = 'Video is unavailable (deleted, private, or region-restricted)';
-    } else if (err.message.includes('Status code: 403')) {
-      statusCode = 403;
-      message = 'Video is age-restricted or requires authentication';
-    } else if (err.message.includes('Status code: 429')) {
-      statusCode = 429;
-      message = 'Too many requests, please try again later';
-    } else if (err.message.includes('Status code: 404')) {
-      statusCode = 404;
-      message = 'Video not found';
-    }
-
-    if (!headersSent && !res.headersSent) {
-      res.writeHead(statusCode);
-      res.end(message);
-    } else {
-      // Если уже начали стримить – просто завершаем
-      res.end();
-    }
-  });
-
-  const timeout = setTimeout(() => {
-    if (!headersSent) {
-      console.error(`[${videoId}] Timeout waiting for first chunk`);
-      stream.destroy();
-      if (!res.headersSent) {
-        res.writeHead(504);
-        res.end('Timeout');
-      }
-    }
-  }, 60000);
+function handleYt(videoId, res) {
+  // Первая попытка — Invidious
+  fetchInvidiousAudio(videoId, res);
 }
 
 http.createServer((req, res) => {
@@ -133,4 +163,4 @@ http.createServer((req, res) => {
     filePath = path.join(STATIC, 'index.html');
   }
   serveFile(res, filePath);
-}).listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}).listen(PORT, () => console.log(`Server running on port ${PORT} (Invidious proxy mode)`));
