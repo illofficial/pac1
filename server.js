@@ -12,6 +12,14 @@ const MIME = {
 
 const STATIC = path.join(__dirname);
 
+const INVIDIOUS = [
+  'invidious.fdn.fr',
+  'vid.puffyan.us',
+  'inv.nadeko.net',
+  'yt.artemislena.eu',
+  'invidious.perennialte.ch',
+];
+
 function serveFile(res, filePath) {
   const ext = path.extname(filePath);
   const ct = MIME[ext] || 'application/octet-stream';
@@ -25,22 +33,43 @@ function serveFile(res, filePath) {
   }
 }
 
-function proxyRequest(req, res, targetHost, targetPath) {
-  const opts = {
-    hostname: targetHost, port: 443, path: targetPath, method: req.method,
-    headers: { ...req.headers, host: targetHost },
-    timeout: 30000,
-  };
-  const proxy = https.request(opts, (pres) => {
-    res.writeHead(pres.statusCode, pres.headers);
-    pres.pipe(res);
+function proxyStream(req, res, host, targetPath) {
+  return new Promise((resolve, reject) => {
+    const opts = {
+      hostname: host, port: 443, path: targetPath, method: 'GET',
+      headers: { host },
+      timeout: 15000,
+    };
+    const proxy = https.request(opts, (pres) => {
+      if (pres.statusCode >= 400) {
+        pres.resume();
+        return reject(new Error('HTTP ' + pres.statusCode));
+      }
+      const chunks = [];
+      pres.on('data', c => chunks.push(c));
+      pres.on('end', () => resolve(Buffer.concat(chunks)));
+    });
+    proxy.on('error', reject);
+    proxy.on('timeout', () => { proxy.destroy(); reject(new Error('timeout')); });
+    req.pipe(proxy);
   });
-  proxy.on('error', (e) => {
-    res.writeHead(502);
-    res.end('Proxy error: ' + e.message);
-  });
-  proxy.on('timeout', () => { proxy.destroy(); res.writeHead(504); res.end('Timeout'); });
-  req.pipe(proxy);
+}
+
+async function proxyYt(req, res, targetPath) {
+  for (const host of INVIDIOUS) {
+    try {
+      console.log('Trying', host, targetPath.slice(0, 60));
+      const buf = await proxyStream(req, res, host, targetPath);
+      const ct = targetPath.includes('/api/v1/videos/') ? 'application/json' : 'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': ct, 'Content-Length': buf.length });
+      res.end(buf);
+      return;
+    } catch (e) {
+      console.log('  failed:', host, e.message);
+    }
+  }
+  res.writeHead(502);
+  res.end('All Invidious instances unreachable');
 }
 
 const server = http.createServer((req, res) => {
@@ -48,11 +77,11 @@ const server = http.createServer((req, res) => {
 
   if (url.pathname.startsWith('/api/yt/')) {
     const targetPath = url.pathname.replace('/api/yt', '') + url.search;
-    return proxyRequest(req, res, 'invidious.fdn.fr', targetPath);
+    return proxyYt(req, res, targetPath);
   }
-  if (url.pathname.startsWith('/api/yt2/')) {
-    const targetPath = url.pathname.replace('/api/yt2', '') + url.search;
-    return proxyRequest(req, res, 'vid.puffyan.us', targetPath);
+  if (url.pathname === '/api/health') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    return res.end('ok');
   }
 
   let filePath = path.join(STATIC, url.pathname === '/' ? 'index.html' : url.pathname);
