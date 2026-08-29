@@ -2,18 +2,45 @@ const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const ytdl = require('ytdl-core');
 
 const PORT = process.env.PORT || 80;
 const STATIC = __dirname;
 
-// Список публичных инстансов Invidious (с поддержкой CORS или без)
+// Расширенный список Invidious инстансов
 const INVIDIOUS_INSTANCES = [
   'https://invidious.fdn.fr',
   'https://inv.nadeko.net',
   'https://invidious.perennialte.ch',
   'https://vid.puffyan.us',
   'https://yewtu.be',
+  'https://invidious.snopyta.org',
+  'https://invidious.nerdvpn.de',
+  'https://invidious.materialio.us',
+  'https://invidious.zapashcanon.fr',
+  'https://invidious.privacydev.net',
+  'https://inv.riverside.rocks',
 ];
+
+// Загружаем cookies для ytdl-core (если есть)
+let cookieString = '';
+const cookiesPath = path.join(__dirname, 'cookies.txt');
+if (fs.existsSync(cookiesPath)) {
+  try {
+    const lines = fs.readFileSync(cookiesPath, 'utf8').split('\n');
+    const cookies = lines
+      .filter(line => line.trim() && !line.startsWith('#'))
+      .map(line => line.split('\t'))
+      .filter(parts => parts.length >= 7)
+      .map(parts => `${parts[5]}=${parts[6]}`);
+    cookieString = cookies.join('; ');
+    console.log('✅ Cookies loaded successfully');
+  } catch (err) {
+    console.error('❌ Error loading cookies:', err.message);
+  }
+} else {
+  console.warn('⚠️ cookies.txt not found – ytdl-core fallback may fail');
+}
 
 const MIME = {
   '.html': 'text/html',
@@ -39,19 +66,17 @@ function serveFile(res, filePath) {
   }
 }
 
+// Прокси через Invidious
 function fetchInvidiousAudio(videoId, res) {
   console.log(`[${videoId}] Trying Invidious`);
-
-  // Пробуем инстансы по очереди
   let currentInstanceIndex = 0;
+  let errors = [];
 
   const tryNextInstance = () => {
     if (currentInstanceIndex >= INVIDIOUS_INSTANCES.length) {
-      console.error(`[${videoId}] All Invidious instances failed`);
-      if (!res.headersSent) {
-        res.writeHead(503);
-        res.end('All video services are unavailable');
-      }
+      console.error(`[${videoId}] All Invidious instances failed. Errors:`, errors);
+      // Пробуем запасной вариант через ytdl-core
+      fetchYtdlFallback(videoId, res);
       return;
     }
 
@@ -59,19 +84,20 @@ function fetchInvidiousAudio(videoId, res) {
     currentInstanceIndex++;
     console.log(`[${videoId}] Trying instance: ${instance}`);
 
-    // Сначала получаем информацию о видео, чтобы найти аудио-поток
     const infoUrl = `${instance}/api/v1/videos/${videoId}`;
     const req = https.get(infoUrl, (infoRes) => {
       let data = '';
       infoRes.on('data', chunk => data += chunk);
       infoRes.on('end', () => {
         try {
+          if (infoRes.statusCode !== 200) {
+            throw new Error(`HTTP ${infoRes.statusCode}`);
+          }
           const videoInfo = JSON.parse(data);
           if (!videoInfo || !videoInfo.adaptiveFormats) {
             throw new Error('No adaptive formats');
           }
 
-          // Ищем лучший аудио-формат (предпочтение opus, затем m4a)
           const audioFormats = videoInfo.adaptiveFormats
             .filter(f => f.type && f.type.startsWith('audio/'))
             .sort((a, b) => {
@@ -90,7 +116,6 @@ function fetchInvidiousAudio(videoId, res) {
           const bestFormat = audioFormats[0];
           const audioUrl = bestFormat.url;
 
-          // Проксируем аудио-поток
           const audioReq = https.get(audioUrl, (audioRes) => {
             if (audioRes.statusCode !== 200) {
               throw new Error(`Audio stream returned ${audioRes.statusCode}`);
@@ -108,14 +133,24 @@ function fetchInvidiousAudio(videoId, res) {
           audioReq.on('error', (err) => {
             console.error(`[${videoId}] Audio stream error:`, err.message);
             if (!res.headersSent) {
+              errors.push(`${instance}: ${err.message}`);
               tryNextInstance();
             } else {
               res.end();
             }
           });
 
+          audioReq.setTimeout(15000, () => {
+            audioReq.destroy();
+            if (!res.headersSent) {
+              errors.push(`${instance}: timeout on audio stream`);
+              tryNextInstance();
+            }
+          });
+
         } catch (err) {
           console.error(`[${videoId}] Error parsing video info:`, err.message);
+          errors.push(`${instance}: ${err.message}`);
           tryNextInstance();
         }
       });
@@ -123,12 +158,14 @@ function fetchInvidiousAudio(videoId, res) {
 
     req.on('error', (err) => {
       console.error(`[${videoId}] Request to ${instance} failed:`, err.message);
+      errors.push(`${instance}: ${err.message}`);
       tryNextInstance();
     });
 
     req.setTimeout(10000, () => {
       req.destroy();
       console.error(`[${videoId}] Timeout on ${instance}`);
+      errors.push(`${instance}: timeout`);
       tryNextInstance();
     });
   };
@@ -136,8 +173,75 @@ function fetchInvidiousAudio(videoId, res) {
   tryNextInstance();
 }
 
+// Запасной вариант через ytdl-core (с cookies, если есть)
+function fetchYtdlFallback(videoId, res) {
+  console.log(`[${videoId}] Trying ytdl-core fallback`);
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+  const requestOptions = { timeout: 60000 };
+  if (cookieString) {
+    requestOptions.headers = { Cookie: cookieString };
+  }
+
+  const stream = ytdl(url, {
+    quality: 'highestaudio',
+    requestOptions: requestOptions,
+  });
+
+  let headersSent = false;
+
+  const sendHeaders = () => {
+    if (!headersSent) {
+      res.writeHead(200, {
+        'Content-Type': 'audio/mp4',
+        'X-Audio-Title': encodeURIComponent('youtube_audio'),
+      });
+      headersSent = true;
+      console.log(`[${videoId}] ytdl-core headers sent`);
+    }
+  };
+
+  stream.on('data', (chunk) => {
+    sendHeaders();
+    res.write(chunk);
+  });
+
+  stream.on('end', () => {
+    if (headersSent) {
+      res.end();
+      console.log(`[${videoId}] ytdl-core stream finished`);
+    } else {
+      console.error(`[${videoId}] ytdl-core no data`);
+      if (!res.headersSent) {
+        res.writeHead(503);
+        res.end('All video services unavailable');
+      }
+    }
+  });
+
+  stream.on('error', (err) => {
+    console.error(`[${videoId}] ytdl-core error:`, err.message);
+    if (!headersSent && !res.headersSent) {
+      res.writeHead(503);
+      res.end('All video services unavailable');
+    } else {
+      res.end();
+    }
+  });
+
+  const timeout = setTimeout(() => {
+    if (!headersSent) {
+      console.error(`[${videoId}] ytdl-core timeout`);
+      stream.destroy();
+      if (!res.headersSent) {
+        res.writeHead(504);
+        res.end('Timeout');
+      }
+    }
+  }, 60000);
+}
+
 function handleYt(videoId, res) {
-  // Первая попытка — Invidious
   fetchInvidiousAudio(videoId, res);
 }
 
@@ -163,4 +267,4 @@ http.createServer((req, res) => {
     filePath = path.join(STATIC, 'index.html');
   }
   serveFile(res, filePath);
-}).listen(PORT, () => console.log(`Server running on port ${PORT} (Invidious proxy mode)`));
+}).listen(PORT, () => console.log(`Server running on port ${PORT} (Invidious + ytdl-core fallback)`));
