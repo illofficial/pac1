@@ -301,25 +301,23 @@ function fetchWithYtDlpProxy(videoId, res) {
   }, 120000);
 }
 
-function handleYt(videoId, res, req) { // добавьте req
-  // Проверяем токен (если нужно защитить эндпоинт)
-  verifyToken(req)
-    .then(user => {
-      console.log(`User ${user.uid} requested video ${videoId}`);
-      // Теперь вызываем основную логику (Apify или резерв)
-      if (APIFY_TOKEN) {
-        fetchWithApify(videoId, res);
-      } else {
-        fetchWithYtDlpProxy(videoId, res);
-      }
-    })
-    .catch(err => {
-      console.error('Auth error:', err.message);
-      if (!res.headersSent) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Unauthorized', message: err.message }));
-      }
-    });
+async function handleYt(videoId, res, req) {
+  try {
+    const user = await verifyToken(req);
+    console.log(`User ${user.uid} requested video ${videoId}`);
+    // Продолжаем обработку
+    if (APIFY_TOKEN) {
+      fetchWithApify(videoId, res);
+    } else {
+      fetchWithYtDlpProxy(videoId, res);
+    }
+  } catch (err) {
+    console.error('Auth error:', err.message);
+    if (!res.headersSent) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized', message: err.message }));
+    }
+  }
 }
 
 const server = http.createServer((req, res) => {
