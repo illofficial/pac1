@@ -16,7 +16,6 @@ const INVIDIOUS = [
   'invidious.fdn.fr',
   'vid.puffyan.us',
   'inv.nadeko.net',
-  'yt.artemislena.eu',
   'invidious.perennialte.ch',
 ];
 
@@ -37,8 +36,9 @@ function proxyStream(req, res, host, targetPath) {
   return new Promise((resolve, reject) => {
     const opts = {
       hostname: host, port: 443, path: targetPath, method: 'GET',
-      headers: { host },
+      headers: { host, 'User-Agent': 'PAC1/1.0' },
       timeout: 15000,
+      rejectUnauthorized: false,
     };
     const proxy = https.request(opts, (pres) => {
       if (pres.statusCode >= 400) {
