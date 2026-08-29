@@ -103,6 +103,94 @@ function fetchPipedAudio(videoId, res) {
   tryNext();
 }
 
+// ---------- yt-dlp-proxy (автоматический подбор прокси) ----------
+function fetchYtDlpProxy(videoId, res) {
+  console.log(`[${videoId}] Trying yt-dlp-proxy with automatic proxy selection`);
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+  // Аргументы для yt-dlp-proxy (те же, что и для yt-dlp)
+  const args = [
+    '-f', 'bestaudio',
+    '--no-playlist',
+    '--no-check-certificates',
+    '--extractor-args', 'youtube:player-client=android', // эмуляция Android
+    '-o', '-',
+    url,
+  ];
+
+  const proc = spawn('yt-dlp-proxy', args, {
+    timeout: 180000, // увеличенный таймаут (3 минуты) на поиск прокси
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let headersSent = false;
+  const sendHeaders = () => {
+    if (!headersSent) {
+      res.writeHead(200, {
+        'Content-Type': 'audio/mp4',
+        'X-Audio-Title': encodeURIComponent('youtube_audio'),
+      });
+      headersSent = true;
+      console.log(`[${videoId}] yt-dlp-proxy headers sent`);
+    }
+  };
+
+  proc.stdout.on('data', (chunk) => {
+    sendHeaders();
+    res.write(chunk);
+  });
+
+  proc.stdout.on('end', () => {
+    if (headersSent) {
+      res.end();
+      console.log(`[${videoId}] yt-dlp-proxy finished`);
+    } else {
+      console.error(`[${videoId}] yt-dlp-proxy no data`);
+      if (!res.headersSent) {
+        res.writeHead(503);
+        res.end('All video services unavailable');
+      }
+    }
+  });
+
+  proc.stderr.on('data', (d) => {
+    console.error(`[${videoId}] yt-dlp-proxy stderr:`, d.toString());
+  });
+
+  proc.on('error', (err) => {
+    console.error(`[${videoId}] yt-dlp-proxy spawn error:`, err.message);
+    if (!headersSent && !res.headersSent) {
+      res.writeHead(503);
+      res.end('All video services unavailable');
+    } else {
+      res.end();
+    }
+  });
+
+  proc.on('close', (code) => {
+    if (code !== 0 && !headersSent) {
+      console.error(`[${videoId}] yt-dlp-proxy exit code ${code}`);
+      if (!res.headersSent) {
+        res.writeHead(503);
+        res.end('All video services unavailable');
+      }
+    } else if (code !== 0) {
+      console.warn(`[${videoId}] yt-dlp-proxy exited with code ${code} after streaming started`);
+    }
+  });
+
+  const timeout = setTimeout(() => {
+    if (!headersSent) {
+      console.error(`[${videoId}] yt-dlp-proxy timeout`);
+      proc.kill();
+      if (!res.headersSent) {
+        res.writeHead(504);
+        res.end('Timeout');
+      }
+    }
+  }, 120000); // 2 минуты на поиск прокси + загрузку
+}
+
 // ---------- Invidious ----------
 function fetchInvidiousAudio(videoId, res, prevErrors = []) {
   let current = 0;
@@ -214,14 +302,23 @@ function fetchYtDlpAndroid(videoId, res, prevErrors = []) {
     console.error(`[${videoId}] yt-dlp stderr:`, d.toString());
   });
   proc.on('error', (err) => {
-    console.error(`[${videoId}] yt-dlp spawn error:`, err.message);
+    console.error(`[${videoId}] ytdl-core error:`, err.message);
     if (!headersSent && !res.headersSent) {
-      res.writeHead(503);
-      res.end('All video services unavailable');
+      // Если ytdl-core с cookies не сработал, пробуем yt-dlp-proxy
+      return fetchYtDlpProxy(videoId, res);
     } else {
       res.end();
     }
   });
+  // proc.on('error', (err) => {
+  //   console.error(`[${videoId}] yt-dlp spawn error:`, err.message);
+  //   if (!headersSent && !res.headersSent) {
+  //     res.writeHead(503);
+  //     res.end('All video services unavailable');
+  //   } else {
+  //     res.end();
+  //   }
+  // });
   proc.on('close', (code) => {
     if (code !== 0 && !headersSent) {
       console.error(`[${videoId}] yt-dlp exit code ${code}`);
