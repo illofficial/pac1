@@ -35,6 +35,20 @@ async function getFirebaseToken() {
   return null;
 }
 
+async function verifyToken(req) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new Error('No token provided');
+  }
+  const idToken = authHeader.split('Bearer ')[1];
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    return decodedToken; // { uid, email, ... }
+  } catch (err) {
+    throw new Error('Invalid token: ' + err.message);
+  }
+}
+
 const PORT = process.env.PORT || 80;
 const STATIC = __dirname;
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
