@@ -557,20 +557,16 @@
 <script type="importmap">
 {
   "imports": {
-    "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
-    "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"
   }
 }
 </script>
+
 <script type="module">
-  import { initializeApp } from "firebase/app";
-  import { getAnalytics } from "firebase/analytics";
-  import { getAuth, onAuthStateChanged } from 'firebase/auth';
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
-  
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  import { initializeApp } from 'firebase/app';
+  import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+
   const firebaseConfig = {
     apiKey: "AIzaSyDHaMAQyAJUsCRhKdEUI-appY7UaeIoWbI",
     authDomain: "pac1-51fbe.firebaseapp.com",
@@ -580,31 +576,36 @@
     appId: "1:314399113786:web:d2db0c1fd9b60c1b2aab03",
     measurementId: "G-8ZPVTE2J3G"
   };
-  
-  // Initialize Firebase
+
   const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-  
-  const auth = getAuth();
-  
-  // Функция для получения токена
-  async function getFirebaseToken() {
+  const auth = getAuth(app);
+
+  // Делаем функции глобально доступными
+  window.getFirebaseToken = async function() {
     const user = auth.currentUser;
-    if (!user) {
-      console.warn('No user logged in');
-      return null;
-    }
+    if (!user) return null;
     try {
-      const token = await user.getIdToken();
-      console.log('Token obtained:', token.substring(0, 20) + '...');
-      return token;
-    } catch (err) {
-      console.error('Error getting token:', err);
+      return await user.getIdToken();
+    } catch (e) {
+      console.error('Error getting token:', e);
       return null;
     }
-  }
-  // Сделаем функцию доступной глобально (чтобы её можно было вызвать из onclick)
-  window.getFirebaseToken = getFirebaseToken;
+  };
+
+  window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+  window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+  window.signOut = signOut;
+  window.auth = auth;
+
+  // Следим за состоянием входа
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      console.log('User logged in:', user.email);
+      // Можно обновить UI
+    } else {
+      console.log('User logged out');
+    }
+  });
 </script>
 <script id="dsp-src">
 // mastering_chain.js (v3)
@@ -2162,7 +2163,7 @@
     try {
       let userCredential;
       if (loginMode === 'signin') {
-        userCredential = await signInWithEmailAndPassword(auth, email, pw);
+        userCredential = await window.signInWithEmailAndPassword(auth, email, pw);
       } else {
         userCredential = await createUserWithEmailAndPassword(auth, email, pw);
       }
