@@ -554,7 +554,37 @@
 <!-- DSP engine source. Runs directly in the main thread (this sandbox blocks
      constructing Workers from blob: URLs, so processing happens here with
      periodic yields between stages to keep the tab responsive). -->
+<script type="importmap">
+{
+  "imports": {
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
+  }
+}
+</script>
 <script id="dsp-src">
+
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyDHaMAQyAJUsCRhKdEUI-appY7UaeIoWbI",
+  authDomain: "pac1-51fbe.firebaseapp.com",
+  projectId: "pac1-51fbe",
+  storageBucket: "pac1-51fbe.firebasestorage.app",
+  messagingSenderId: "314399113786",
+  appId: "1:314399113786:web:d2db0c1fd9b60c1b2aab03",
+  measurementId: "G-8ZPVTE2J3G"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+  
 // mastering_chain.js (v3)
 // Light "enhancement" chain, not a full mastering brickwall: gentle saturation +
 // transient clarity + continuous, density-aware dynamics control (roughly half the
@@ -2093,7 +2123,7 @@
     showScreen('paywall');
   }
 
-  loginBtn.addEventListener('click', () => {
+  loginBtn.addEventListener('click', async () => {
     const email = loginEmail.value.trim();
     const pw = loginPassword.value;
     if (!email || !pw) {
@@ -2106,19 +2136,42 @@
       loginError.classList.add('show');
       return;
     }
-    // Firebase auth will be plugged in here — for now, accept any valid-looking creds
-    let u = resetDailyIfNeeded(getUsage());
-    u.loggedIn = true;
-    saveUsage(u);
-    loginError.classList.remove('show');
-    // After login, check if still have trials
-    u = resetDailyIfNeeded(getUsage());
-    if (trialsLeft(u) > 0) {
+  
+    try {
+      let userCredential;
+      if (loginMode === 'signin') {
+        userCredential = await signInWithEmailAndPassword(auth, email, pw);
+      } else {
+        userCredential = await createUserWithEmailAndPassword(auth, email, pw);
+      }
+      // Успешный вход/регистрация
+      const user = userCredential.user;
+      // Получаем ID токен
+      const idToken = await user.getIdToken();
+      // Сохраняем токен в localStorage или в памяти
+      localStorage.setItem('firebaseToken', idToken);
+      // Обновляем usage
+      let u = resetDailyIfNeeded(getUsage());
+      u.loggedIn = true;
+      saveUsage(u);
+      loginError.classList.remove('show');
+      // Показываем экран ввода
       showScreen('input');
-    } else {
-      showPaywallScreen();
+    } catch (error) {
+      console.error('Firebase auth error:', error);
+      loginError.textContent = '⚠ ' + error.message;
+      loginError.classList.add('show');
     }
   });
+
+  async function logout() {
+    await signOut(auth);
+    localStorage.removeItem('firebaseToken');
+    let u = resetDailyIfNeeded(getUsage());
+    u.loggedIn = false;
+    saveUsage(u);
+    showScreen('input');
+  }
 
   loginSwitch.addEventListener('click', () => {
     loginMode = loginMode === 'signin' ? 'signup' : 'signin';
