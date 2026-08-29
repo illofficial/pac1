@@ -32,7 +32,6 @@ function serveFile(res, filePath) {
   }
 }
 
-// ---------- ОСНОВНОЙ МЕТОД: Apify ----------
 function fetchWithApify(videoId, res) {
   if (!APIFY_TOKEN) {
     console.warn(`[${videoId}] APIFY_TOKEN not set, skipping Apify`);
@@ -42,8 +41,9 @@ function fetchWithApify(videoId, res) {
   console.log(`[${videoId}] Trying Apify`);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
+  // Правильный input для актора utils/youtube-link
   const input = {
-    url: url,
+    videos: [url],
     proxyConfiguration: {
       useApifyProxy: true,
       apifyProxyGroups: ['RESIDENTIAL'],
@@ -78,12 +78,11 @@ function fetchWithApify(videoId, res) {
 
         const item = result[0];
         let audioUrl = null;
+        let bestBitrate = 0;
         if (item.audioFormats && Array.isArray(item.audioFormats)) {
-          // Берём формат с наивысшим битрейтом
-          let best = 0;
           for (const fmt of item.audioFormats) {
-            if (fmt.url && (fmt.bitrate || 0) > best) {
-              best = fmt.bitrate || 0;
+            if (fmt.url && (fmt.bitrate || 0) > bestBitrate) {
+              bestBitrate = fmt.bitrate || 0;
               audioUrl = fmt.url;
             }
           }
@@ -143,7 +142,6 @@ function fetchWithApify(videoId, res) {
   req.end();
 }
 
-// ---------- РЕЗЕРВ: yt-dlp-proxy (автоматический подбор прокси) ----------
 function fetchWithYtDlpProxy(videoId, res) {
   console.log(`[${videoId}] Trying yt-dlp-proxy as fallback`);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -228,7 +226,6 @@ function fetchWithYtDlpProxy(videoId, res) {
   }, 120000);
 }
 
-// ---------- Основной обработчик ----------
 function handleYt(videoId, res) {
   if (APIFY_TOKEN) {
     fetchWithApify(videoId, res);
@@ -238,7 +235,6 @@ function handleYt(videoId, res) {
   }
 }
 
-// ----- HTTP сервер -----
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname.startsWith('/api/yt/')) {
