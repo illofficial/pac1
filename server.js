@@ -3,36 +3,19 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-
 const admin = require('firebase-admin');
 
-// Инициализация из переменной окружения
+// Инициализация Firebase Admin
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
     console.log('✅ Firebase Admin initialized');
   } catch (err) {
     console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT:', err.message);
   }
 } else {
   console.warn('⚠️ FIREBASE_SERVICE_ACCOUNT not set – auth will not work');
-}
-
-// Получение текущего токена
-async function getFirebaseToken() {
-  const user = auth.currentUser;
-  if (user) {
-    try {
-      return await user.getIdToken();
-    } catch (e) {
-      console.error('Error getting token:', e);
-      return null;
-    }
-  }
-  return null;
 }
 
 async function verifyToken(req) {
@@ -42,8 +25,7 @@ async function verifyToken(req) {
   }
   const idToken = authHeader.split('Bearer ')[1];
   try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    return decodedToken; // { uid, email, ... }
+    return await admin.auth().verifyIdToken(idToken);
   } catch (err) {
     throw new Error('Invalid token: ' + err.message);
   }
@@ -77,20 +59,6 @@ function serveFile(res, filePath) {
   }
 }
 
-async function verifyToken(req) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw new Error('No token provided');
-  }
-  const idToken = authHeader.split('Bearer ')[1];
-  try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    return decodedToken; // содержит uid, email и др.
-  } catch (err) {
-    throw new Error('Invalid token: ' + err.message);
-  }
-}
-
 function fetchWithApify(videoId, res) {
   if (!APIFY_TOKEN) {
     console.warn(`[${videoId}] APIFY_TOKEN not set, skipping Apify`);
@@ -102,10 +70,7 @@ function fetchWithApify(videoId, res) {
 
   const input = {
     videos: [{ url: url }],
-    proxyConfiguration: {
-      useApifyProxy: true,
-      apifyProxyGroups: ['RESIDENTIAL'],
-    },
+    proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] },
   };
 
   const payload = JSON.stringify(input);
@@ -147,7 +112,6 @@ function fetchWithApify(videoId, res) {
         const downloadUrl = item.downloadUrl;
         console.log(`[${videoId}] Download URL: ${downloadUrl}`);
 
-        // 1. Скачиваем WebM с Apify в память
         https.get(downloadUrl, { timeout: 120000 }, (webmRes) => {
           if (webmRes.statusCode !== 200) {
             throw new Error(`WebM download failed: ${webmRes.statusCode}`);
@@ -159,7 +123,6 @@ function fetchWithApify(videoId, res) {
             const webmBuffer = Buffer.concat(chunks);
             console.log(`[${videoId}] WebM downloaded: ${webmBuffer.length} bytes`);
 
-            // 2. Конвертируем через ffmpeg в WAV, собирая вывод в буфер
             const ffmpeg = spawn('ffmpeg', [
               '-i', 'pipe:0',
               '-f', 'wav',
@@ -187,7 +150,6 @@ function fetchWithApify(videoId, res) {
               const wavBuffer = Buffer.concat(wavChunks);
               console.log(`[${videoId}] WAV size: ${wavBuffer.length} bytes`);
 
-              // 3. Отправляем WAV клиенту с Content-Length
               res.writeHead(200, {
                 'Content-Type': 'audio/wav',
                 'Content-Length': wavBuffer.length,
@@ -197,8 +159,13 @@ function fetchWithApify(videoId, res) {
               console.log(`[${videoId}] WAV sent to client`);
             });
 
-            ffmpeg.stdin.write(webmBuffer);
-            ffmpeg.stdin.end();
+            // ==== ИСПРАВЛЕНИЕ: обработка ошибок записи ====
+            ffmpeg.stdin.write(webmBuffer, (err) => {
+              if (err) console.error(`[${videoId}] stdin write error:`, err);
+            });
+            ffmpeg.stdin.end((err) => {
+              if (err) console.error(`[${videoId}] stdin end error:`, err);
+            });
           });
 
           webmRes.on('error', (err) => {
@@ -244,10 +211,7 @@ function fetchWithYtDlpProxy(videoId, res) {
     url,
   ];
 
-  const proc = spawn('yt-dlp-proxy', args, {
-    timeout: 180000,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const proc = spawn('yt-dlp-proxy', args, { timeout: 180000, stdio: ['ignore', 'pipe', 'pipe'] });
 
   let headersSent = false;
   const sendHeaders = () => {
@@ -261,45 +225,26 @@ function fetchWithYtDlpProxy(videoId, res) {
     }
   };
 
-  proc.stdout.on('data', (chunk) => {
-    sendHeaders();
-    res.write(chunk);
-  });
-
+  proc.stdout.on('data', (chunk) => { sendHeaders(); res.write(chunk); });
   proc.stdout.on('end', () => {
-    if (headersSent) {
-      res.end();
-      console.log(`[${videoId}] yt-dlp-proxy finished`);
-    } else {
+    if (headersSent) { res.end(); console.log(`[${videoId}] yt-dlp-proxy finished`); }
+    else {
       console.error(`[${videoId}] yt-dlp-proxy no data`);
-      if (!res.headersSent) {
-        res.writeHead(503);
-        res.end('All video services unavailable');
-      }
+      if (!res.headersSent) { res.writeHead(503); res.end('All video services unavailable'); }
     }
   });
 
-  proc.stderr.on('data', (d) => {
-    console.error(`[${videoId}] yt-dlp-proxy stderr:`, d.toString());
-  });
-
+  proc.stderr.on('data', (d) => console.error(`[${videoId}] yt-dlp-proxy stderr:`, d.toString()));
   proc.on('error', (err) => {
     console.error(`[${videoId}] yt-dlp-proxy spawn error:`, err.message);
-    if (!headersSent && !res.headersSent) {
-      res.writeHead(503);
-      res.end('All video services unavailable');
-    } else {
-      res.end();
-    }
+    if (!headersSent && !res.headersSent) { res.writeHead(503); res.end('All video services unavailable'); }
+    else { res.end(); }
   });
 
   proc.on('close', (code) => {
     if (code !== 0 && !headersSent) {
       console.error(`[${videoId}] yt-dlp-proxy exit code ${code}`);
-      if (!res.headersSent) {
-        res.writeHead(503);
-        res.end('All video services unavailable');
-      }
+      if (!res.headersSent) { res.writeHead(503); res.end('All video services unavailable'); }
     }
   });
 
@@ -307,20 +252,15 @@ function fetchWithYtDlpProxy(videoId, res) {
     if (!headersSent) {
       console.error(`[${videoId}] yt-dlp-proxy timeout`);
       proc.kill();
-      if (!res.headersSent) {
-        res.writeHead(504);
-        res.end('Timeout');
-      }
+      if (!res.headersSent) { res.writeHead(504); res.end('Timeout'); }
     }
   }, 120000);
 }
 
 function handleYt(videoId, res, req) {
-  // Проверяем токен
   verifyToken(req)
     .then(user => {
       console.log(`User ${user.uid} requested video ${videoId}`);
-      // Если всё ок, запускаем основную логику
       if (APIFY_TOKEN) {
         fetchWithApify(videoId, res);
       } else {
@@ -332,6 +272,8 @@ function handleYt(videoId, res, req) {
       if (!res.headersSent) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Unauthorized', message: err.message }));
+      } else if (!res.writableEnded) {
+        res.end();
       }
     });
 }
@@ -344,7 +286,7 @@ const server = http.createServer((req, res) => {
       res.writeHead(400);
       return res.end('Invalid video ID');
     }
-    return handleYt(videoId, res, req); 
+    return handleYt(videoId, res, req);
   }
   if (url.pathname === '/api/health') {
     res.writeHead(200);
@@ -355,7 +297,7 @@ const server = http.createServer((req, res) => {
   serveFile(res, filePath);
 });
 
-server.timeout = 180000;
+server.timeout = 300000; // увеличен до 5 минут
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT} (timeout: ${server.timeout/1000}s)`);
   if (APIFY_TOKEN) console.log('🔑 Apify token is set');
