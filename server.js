@@ -56,6 +56,66 @@ function handleYt(videoId, res) {
       res.end();
       console.log(`[${videoId}] Stream finished`);
     } else {
+      // Если данных не было – это ошибка (не должно случиться, если была ошибка ранее)
+      console.error(`[${videoId}] No data received`);
+      if (!res.headersSent) {
+        res.writeHead(404);
+        res.end('Video not found or no audio available');
+      }
+    }
+  });
+
+  stream.on('error', (err) => {
+    console.error(`[${videoId}] ytdl error:`, err.message);
+    // Разбираем ошибку
+    let statusCode = 500;
+    let message = 'Internal server error';
+
+    if (err.message.includes('Status code: 410')) {
+      statusCode = 404;
+      message = 'Video is unavailable (deleted, private, or region-restricted)';
+    } else if (err.message.includes('Status code: 403')) {
+      statusCode = 403;
+      message = 'Video is age-restricted or requires authentication';
+    } else if (err.message.includes('Status code: 429')) {
+      statusCode = 429;
+      message = 'Too many requests, please try again later';
+    } else if (err.message.includes('Status code: 404')) {
+      statusCode = 404;
+      message = 'Video not found';
+    }
+
+    if (!headersSent && !res.headersSent) {
+      res.writeHead(statusCode);
+      res.end(message);
+    } else {
+      // Если уже начали стримить – просто завершаем
+      res.end();
+    }
+  });
+
+  const timeout = setTimeout(() => {
+    if (!headersSent) {
+      console.error(`[${videoId}] Timeout waiting for first chunk`);
+      stream.destroy();
+      if (!res.headersSent) {
+        res.writeHead(504);
+        res.end('Timeout');
+      }
+    }
+  }, 60000);
+}
+
+  stream.on('data', (chunk) => {
+    sendHeaders();
+    res.write(chunk);
+  });
+
+  stream.on('end', () => {
+    if (headersSent) {
+      res.end();
+      console.log(`[${videoId}] Stream finished`);
+    } else {
       console.error(`[${videoId}] No data received`);
       if (!res.headersSent) {
         res.writeHead(502);
