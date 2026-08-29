@@ -1,5 +1,6 @@
 const http = require('http');
 const https = require('https');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -10,14 +11,7 @@ const MIME = {
   '.wav': 'audio/wav', '.mp3': 'audio/mpeg',
 };
 
-const STATIC = path.join(__dirname);
-
-const INVIDIOUS = [
-  'invidious.fdn.fr',
-  'vid.puffyan.us',
-  'inv.nadeko.net',
-  'invidious.perennialte.ch',
-];
+const STATIC = __dirname;
 
 function serveFile(res, filePath) {
   const ext = path.extname(filePath);
@@ -32,61 +26,76 @@ function serveFile(res, filePath) {
   }
 }
 
-function proxyStream(req, res, host, targetPath) {
+function ytDlpGetUrl(videoId) {
   return new Promise((resolve, reject) => {
+    const url = 'https://www.youtube.com/watch?v=' + videoId;
+    execFile('yt-dlp', ['-f', 'bestaudio', '-g', '--no-playlist', url], {
+      timeout: 20000, maxBuffer: 4096,
+    }, (err, stdout) => {
+      if (err) return reject(err);
+      const line = stdout.trim().split('\n')[0];
+      if (!line || !line.startsWith('http')) return reject(new Error('no URL from yt-dlp'));
+      resolve(line);
+    });
+  });
+}
+
+function fetchAudio(audioUrl, res) {
+  return new Promise((resolve, reject) => {
+    const proto = audioUrl.startsWith('https') ? https : http;
     const opts = {
-      hostname: host, port: 443, path: targetPath, method: 'GET',
-      headers: { host, 'User-Agent': 'PAC1/1.0' },
-      timeout: 15000,
-      rejectUnauthorized: false,
+      headers: { 'User-Agent': 'PAC1/1.0', 'Accept': '*/*' },
+      timeout: 60000,
     };
-    const proxy = https.request(opts, (pres) => {
+    const req = proto.get(audioUrl, opts, (pres) => {
       if (pres.statusCode >= 400) {
         pres.resume();
         return reject(new Error('HTTP ' + pres.statusCode));
       }
-      const chunks = [];
-      pres.on('data', c => chunks.push(c));
-      pres.on('end', () => resolve(Buffer.concat(chunks)));
+      const total = parseInt(pres.headers['content-length'], 10) || 0;
+      res.writeHead(200, {
+        'Content-Type': pres.headers['content-type'] || 'audio/mp4',
+        'Content-Length': total || undefined,
+        'X-Audio-Title': encodeURIComponent('youtube_audio'),
+      });
+      pres.pipe(res);
+      pres.on('end', resolve);
     });
-    proxy.on('error', reject);
-    proxy.on('timeout', () => { proxy.destroy(); reject(new Error('timeout')); });
-    req.pipe(proxy);
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
   });
 }
 
-async function proxyYt(req, res, targetPath) {
-  for (const host of INVIDIOUS) {
-    try {
-      console.log('Trying', host, targetPath.slice(0, 60));
-      const buf = await proxyStream(req, res, host, targetPath);
-      const ct = targetPath.includes('/api/v1/videos/') ? 'application/json' : 'application/octet-stream';
-      res.writeHead(200, { 'Content-Type': ct, 'Content-Length': buf.length });
-      res.end(buf);
-      return;
-    } catch (e) {
-      console.log('  failed:', host, e.message);
-    }
+async function handleYt(videoId, res) {
+  try {
+    console.log('yt-dlp for', videoId);
+    const audioUrl = await ytDlpGetUrl(videoId);
+    console.log('  got URL:', audioUrl.slice(0, 80) + '...');
+    await fetchAudio(audioUrl, res);
+  } catch (e) {
+    console.error('yt-dlp failed:', e.message);
+    res.writeHead(502);
+    res.end('YouTube audio unavailable: ' + e.message);
   }
-  res.writeHead(502);
-  res.end('All Invidious instances unreachable');
 }
 
-const server = http.createServer((req, res) => {
+http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
   if (url.pathname.startsWith('/api/yt/')) {
-    const targetPath = url.pathname.replace('/api/yt', '') + url.search;
-    return proxyYt(req, res, targetPath);
+    const videoId = url.pathname.split('/api/yt/')[1].split('?')[0];
+    if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+      res.writeHead(400);
+      return res.end('Invalid video ID');
+    }
+    return handleYt(videoId, res);
   }
   if (url.pathname === '/api/health') {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.writeHead(200);
     return res.end('ok');
   }
 
   let filePath = path.join(STATIC, url.pathname === '/' ? 'index.html' : url.pathname);
   if (!path.extname(filePath)) filePath = path.join(STATIC, 'index.html');
   serveFile(res, filePath);
-});
-
-server.listen(PORT, () => console.log('PAC1 on port ' + PORT));
+}).listen(PORT, () => console.log('PAC1 on port ' + PORT));
