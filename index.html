@@ -617,7 +617,15 @@
   import { initializeApp } from 'firebase/app';
   import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
   
-  const firebaseConfig = { /* ... ваш конфиг ... */ };
+  const firebaseConfig = {
+    apiKey: "AIzaSyDHaMAQyAJUsCRhKdEUI-appY7UaeIoWbI",
+    authDomain: "pac1-51fbe.firebaseapp.com",
+    projectId: "pac1-51fbe",
+    storageBucket: "pac1-51fbe.firebasestorage.app",
+    messagingSenderId: "314399113786",
+    appId: "1:314399113786:web:d2db0c1fd9b60c1b2aab03",
+    measurementId: "G-8ZPVTE2J3G"
+  };
   
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
