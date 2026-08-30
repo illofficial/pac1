@@ -81,6 +81,7 @@ function fetchWithApify(videoId, res) {
   const input = {
     videos: [{ url: url }],
     proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] },
+    memory: 4096,
   };
 
   const payload = JSON.stringify(input);
