@@ -345,49 +345,6 @@ async function handleSubscriptionUpdated(data) {
   console.log(`🔄 Подписка обновлена для ${customerId}: ${status}`);
 }
 
-// ----- Обработка вебхуков от Paddle -----
-if (req.method === 'POST' && url.pathname === '/api/webhooks/paddle') {
-  let body = [];
-  req.on('data', chunk => body.push(chunk));
-  req.on('end', async () => {
-    const rawBody = Buffer.concat(body);
-
-    try {
-      // Проверяем подпись и парсим событие
-      const eventData = await paddle.webhooks.unmarshal(
-        rawBody,
-        req.headers['paddle-signature'], // обязательно с маленькой буквы
-        process.env.PADDLE_WEBHOOK_SECRET
-      );
-
-      console.log('🔔 Получен вебхук:', eventData.eventType);
-
-      // Обрабатываем события
-      switch (eventData.eventType) {
-        case 'transaction.completed':
-          await handleTransactionCompleted(eventData.data);
-          break;
-        case 'subscription.canceled':
-          await handleSubscriptionCanceled(eventData.data);
-          break;
-        case 'subscription.updated':
-          await handleSubscriptionUpdated(eventData.data);
-          break;
-        default:
-          console.log(`ℹ️ Необработанный тип: ${eventData.eventType}`);
-      }
-
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok' }));
-    } catch (err) {
-      console.error('❌ Ошибка вебхука:', err);
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: err.message }));
-    }
-  });
-  return; // важно: прерываем обработку, чтобы не попасть в serveFile
-}
-
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname.startsWith('/api/yt/')) {
@@ -400,8 +357,53 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/health') {
     res.writeHead(200);
-    return res.end('ok');
+    res.end('ok');
+    return;
   }
+
+  // 3. ✅ НОВЫЙ БЛОК ДЛЯ ВЕБХУКОВ PADDLE
+  if (req.method === 'POST' && url.pathname === '/api/webhooks/paddle') {
+    let body = [];
+    req.on('data', chunk => body.push(chunk));
+    req.on('end', async () => {
+      const rawBody = Buffer.concat(body);
+      try {
+        // Проверяем подпись и парсим событие
+        const eventData = await paddle.webhooks.unmarshal(
+          rawBody,
+          req.headers['paddle-signature'],
+          process.env.PADDLE_WEBHOOK_SECRET
+        );
+
+        console.log('🔔 Получен вебхук:', eventData.eventType);
+
+        // Обработка событий
+        switch (eventData.eventType) {
+          case 'transaction.completed':
+            await handleTransactionCompleted(eventData.data);
+            break;
+          case 'subscription.canceled':
+            await handleSubscriptionCanceled(eventData.data);
+            break;
+          case 'subscription.updated':
+            await handleSubscriptionUpdated(eventData.data);
+            break;
+          default:
+            console.log(`ℹ️ Необработанный тип: ${eventData.eventType}`);
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok' }));
+      } catch (err) {
+        console.error('❌ Ошибка вебхука:', err);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return; // важно: не идти к serveFile
+  }
+
+  // 4. Обработка статики (serveFile)
   let filePath = path.join(STATIC, url.pathname === '/' ? 'index.html' : url.pathname);
   if (!path.extname(filePath)) filePath = path.join(STATIC, 'index.html');
   serveFile(res, filePath);
