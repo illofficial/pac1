@@ -630,6 +630,12 @@
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword
   } from 'firebase/auth';
+  import { 
+    getFirestore, 
+    doc, 
+    getDoc,
+    setDoc 
+  } from 'firebase/firestore';
 
   const firebaseConfig = {
     apiKey: "AIzaSyDHaMAQyAJUsCRhKdEUI-appY7UaeIoWbI",
@@ -643,6 +649,7 @@
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
+  const db = getFirestore(app);
 
   // Получаем элементы панели
   const emailSpan = document.getElementById('user-email');
@@ -687,6 +694,8 @@
     if (!confirm('Are you sure you want to permanently delete your account?')) return;
     try {
       await user.delete();
+      // Помечаем документ как удалённый (опционально)
+      await setDoc(doc(db, 'users', user.uid), { deleted: true }, { merge: true });
       localStorage.removeItem('firebaseToken');
       let u = resetDailyIfNeeded(getUsage());
       u.loggedIn = false;
@@ -699,7 +708,45 @@
     }
   };
 
-  // Обновление интерфейса в зависимости от статуса подписки
+  // Функция проверки подписки (принимает объект user)
+  async function checkSubscription(user) {
+    const uid = user.uid;
+    const email = user.email;
+    try {
+      const docSnap = await getDoc(doc(db, 'users', uid));
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        // Если email изменился, обновляем (опционально)
+        if (data.email !== email) {
+          await setDoc(doc(db, 'users', uid), { email }, { merge: true });
+        }
+        const status = data.subscriptionStatus || 'inactive';
+        const expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
+        const now = new Date();
+        const isActive = status === 'active' && expiresAt && expiresAt > now;
+        return { 
+          hasSubscription: isActive, 
+          plan: data.plan || 'free',
+          expiresAt: expiresAt ? expiresAt.toISOString().split('T')[0] : '—'
+        };
+      } else {
+        // Новый пользователь – создаём документ с email
+        await setDoc(doc(db, 'users', uid), {
+          subscriptionStatus: 'inactive',
+          plan: 'free',
+          expiresAt: null,
+          createdAt: new Date().toISOString(),
+          email: email // сохраняем почту
+        });
+        return { hasSubscription: false, plan: 'free', expiresAt: '—' };
+      }
+    } catch (err) {
+      console.error('Error checking subscription:', err);
+      return { hasSubscription: false, plan: 'free', expiresAt: '—' };
+    }
+  }
+
+  // Обновление UI для подписки
   function updateUIForSubscription(hasSubscription) {
     const trialsRemaining = document.getElementById('trials-remaining');
     const trialsContainer = trialsRemaining ? trialsRemaining.closest('.remaining-hint') : null;
@@ -712,18 +759,21 @@
       subscriptionStatus.className = 'free';
       if (trialsContainer) trialsContainer.style.display = 'block';
     }
+    // Сохраняем в localStorage для синхронизации с showScreen
+    localStorage.setItem('pac1_subscription', hasSubscription ? 'true' : 'false');
   }
 
   // Следим за состоянием авторизации
-  onAuthStateChanged(auth, (user) => {
+  onAuthStateChanged(auth, async (user) => {
     const modal = document.getElementById('user-modal');
     const modalEmail = document.getElementById('modal-email');
     const modalSubscription = document.getElementById('modal-subscription');
     const modalExpires = document.getElementById('modal-expires');
 
     if (user) {
-      // Залогинен – считаем, что подписка активна (заглушка)
-      const hasSubscription = true; // позже замените на реальную проверку
+      // Получаем данные подписки из Firestore (передаём весь объект user)
+      const sub = await checkSubscription(user);
+      const hasSubscription = sub.hasSubscription;
 
       emailSpan.textContent = user.email;
       emailSpan.onclick = () => modal.classList.toggle('visible');
@@ -734,14 +784,13 @@
       subscriptionStatus.className = hasSubscription ? 'subscribed' : 'free';
 
       modalEmail.textContent = user.email;
-      modalSubscription.textContent = hasSubscription ? 'Active' : 'Free';
-      modalExpires.textContent = hasSubscription ? '2025-12-31' : '—';
+      modalSubscription.textContent = hasSubscription ? (sub.plan || 'Active') : 'Free';
+      modalExpires.textContent = sub.expiresAt || '—';
 
       let u = resetDailyIfNeeded(getUsage());
       u.loggedIn = true;
       saveUsage(u);
 
-      // Обновляем видимость счётчика
       updateUIForSubscription(hasSubscription);
 
       // Если открыт экран логина, переключаем на input
@@ -764,9 +813,10 @@
       u.loggedIn = false;
       saveUsage(u);
 
-      // Показываем счётчик
+      // Показываем счётчик (подписки нет)
       const trialsContainer = document.getElementById('trials-remaining')?.closest('.remaining-hint');
       if (trialsContainer) trialsContainer.style.display = 'block';
+      localStorage.setItem('pac1_subscription', 'false');
     }
   });
 
@@ -782,7 +832,7 @@
   document.getElementById('modal-signout-btn').addEventListener('click', window.signOutUser);
   document.getElementById('modal-remove-btn').addEventListener('click', window.deleteUserAccount);
 
-  console.log('Firebase initialized');
+  console.log('Firebase initialized with Firestore');
 </script>
   
 <script id="dsp-src">
