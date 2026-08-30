@@ -773,9 +773,23 @@
     const modalEmail = document.getElementById('modal-email');
     const modalSubscription = document.getElementById('modal-subscription');
     const modalExpires = document.getElementById('modal-expires');
+    const sub = await checkSubscription(user);
 
     if (user) {
-      const sub = await checkSubscription(user);
+      const hasSubscription = sub.hasSubscription; // из Firestore
+      localStorage.setItem('pac1_subscription', hasSubscription ? 'true' : 'false');
+      let u = resetWeeklyIfNeeded(getUsage());
+      u.loggedIn = true;
+      saveUsage(u);
+    } else {
+      localStorage.removeItem('pac1_subscription');
+      let u = resetWeeklyIfNeeded(getUsage());
+      u.loggedIn = false;
+      saveUsage(u);
+    }
+
+    if (user) {
+      //const sub = await checkSubscription(user);
       const hasSubscription = sub.hasSubscription;
 
       emailSpan.textContent = user.email;
@@ -783,7 +797,7 @@
       signoutBtn.style.display = 'block';
       signoutBtn.onclick = window.signOutUser;
 
-      subscriptionStatus.textContent = hasSubscription ? '⭐ Subscribed' : 'Free';
+      subscriptionStatus.textContent = hasSubscription ? '⭐ SUBSCRIBED ⭐' : 'FREE';
       subscriptionStatus.className = hasSubscription ? 'subscribed' : 'free';
 
       modalEmail.textContent = user.email;
@@ -2268,53 +2282,76 @@
     login: document.getElementById('screen-login'),
     paywall: document.getElementById('screen-paywall'),
   };
-  function showScreen(name){
+  function showScreen(name) {
     Object.values(screens).forEach(s => s.classList.remove('active'));
     screens[name].classList.add('active');
-    if (name === 'input') {
-      const u = resetDailyIfNeeded(getUsage());
-      const limit = u.loggedIn ? FREE_DAILY + LOGIN_DAILY : FREE_DAILY;
-      const used = u.loggedIn ? u.freeUsed + u.loginUsed : u.freeUsed;
-      const left = Math.max(0, limit - used);
-      const el = document.getElementById('trials-remaining');
-      if (el) el.textContent = left;
-      const totalEl = document.getElementById('trials-total');
-      if (totalEl) totalEl.textContent = limit;
   
-      // Скрываем счётчик, если пользователь залогинен и имеет подписку
-      const hasSubscription = u.loggedIn; // здесь тоже заглушка
-      const trialsContainer = el ? el.closest('.remaining-hint') : null;
-      if (trialsContainer) {
-        trialsContainer.style.display = hasSubscription ? 'none' : 'block';
+    if (name === 'input') {
+      const u = resetWeeklyIfNeeded(getUsage());
+      const remaining = getRemaining(u);
+      const limit = FREE_LIMIT;
+      const el = document.getElementById('trials-remaining');
+      if (el) el.textContent = remaining;
+  
+      // Обновляем подсказку
+      const hintEl = document.querySelector('.hint:last-child'); // или специальный элемент
+      if (remaining === 0) {
+        // Показываем предложение подписки или логина
+        if (u.loggedIn) {
+          hintEl.textContent = 'You have used all free conversions. Please subscribe to continue.';
+        } else {
+          hintEl.textContent = 'You have used all free conversions. Please sign in or subscribe.';
+        }
+      } else if (remaining <= 2 && !u.loggedIn) {
+        hintEl.textContent = `You have ${remaining} conversions left. Sign in to continue using the remaining ones.`;
+      } else {
+        hintEl.textContent = 'mp3 / wav / ogg / flac · youtube links · limit — 10 minutes · output in WAV';
       }
     }
   }
 
   // ---------------- usage tracking (localStorage) ----------------
-  const FREE_DAILY = 3;
-  const LOGIN_DAILY = 3;
+  //const FREE_DAILY = 3;
+  //const LOGIN_DAILY = 3;
+  const FREE_LIMIT = 4;
   const STORAGE_KEY = 'pac1_usage';
 
-  function getUsage(){
+  function getUsage() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return { date: '', freeUsed: 0, loginUsed: 0, loggedIn: false };
+      if (!raw) return { weekStart: '', used: 0, loggedIn: false };
       return JSON.parse(raw);
-    } catch { return { date: '', freeUsed: 0, loginUsed: 0, loggedIn: false }; }
+    } catch { return { weekStart: '', used: 0, loggedIn: false }; }
   }
-  function saveUsage(u){
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(u)); } catch(e){}
+  
+  function saveUsage(u) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(u)); } catch(e) {}
   }
-  function resetDailyIfNeeded(u){
-    const today = new Date().toISOString().slice(0,10);
-    if (u.date !== today) return { date: today, freeUsed: 0, loginUsed: 0, loggedIn: u.loggedIn };
+  function resetWeeklyIfNeeded(u) {
+    const now = new Date();
+    const weekStart = u.weekStart ? new Date(u.weekStart) : null;
+    // Если нет weekStart или прошло 7 дней – сбрасываем
+    if (!weekStart || (now - weekStart) >= 7 * 24 * 60 * 60 * 1000) {
+      u.weekStart = now.toISOString();
+      u.used = 0;
+    }
     return u;
   }
-  function trialsLeft(u){
-    const limit = u.loggedIn ? FREE_DAILY + LOGIN_DAILY : FREE_DAILY;
-    const used = u.loggedIn ? u.freeUsed + u.loginUsed : u.freeUsed;
+  
+  function getRemaining(u) {
+    u = resetWeeklyIfNeeded(u);
+    const limit = FREE_LIMIT;
+    const used = u.used || 0;
     return Math.max(0, limit - used);
   }
+  
+  function bumpUsage() {
+    let u = resetWeeklyIfNeeded(getUsage());
+    u.used = (u.used || 0) + 1;
+    saveUsage(u);
+    return true;
+  }
+  
   function renderTrialsDots(containerId, u){
     const el = document.getElementById(containerId);
     if (!el) return;
@@ -2327,18 +2364,6 @@
       el.appendChild(d);
     }
   }
-  function bumpUsage(){
-    let u = resetDailyIfNeeded(getUsage());
-    if (u.loggedIn) {
-      if (u.loginUsed < LOGIN_DAILY) { u.loginUsed++; saveUsage(u); return true; }
-      if (u.freeUsed < FREE_DAILY) { u.freeUsed++; saveUsage(u); return true; }
-    } else {
-      if (u.freeUsed < FREE_DAILY) { u.freeUsed++; saveUsage(u); return true; }
-    }
-    saveUsage(u);
-    return false;
-  }
-
   // ---------------- login / paywall UI ----------------
   const loginEmail = document.getElementById('login-email');
   const loginPassword = document.getElementById('login-password');
@@ -2850,11 +2875,45 @@
     inputError.classList.remove('show');
     const url = urlInput.value.trim();
     const file = fileInput.files && fileInput.files[0];
-
-    if(!url && !file){
+  
+    if (!url && !file) {
       inputError.classList.add('show');
       return;
     }
+  
+    // Проверка подписки (если залогинен и есть подписка – пропускаем лимит)
+    const u = resetWeeklyIfNeeded(getUsage());
+    let hasSubscription = false;
+    if (u.loggedIn) {
+      // Проверяем из localStorage или переменной (устанавливается в Firebase-модуле)
+      hasSubscription = localStorage.getItem('pac1_subscription') === 'true';
+    }
+  
+    if (!hasSubscription) {
+      const remaining = getRemaining(u);
+      if (remaining <= 0) {
+        // Если нет остатка – показываем paywall или логин
+        if (u.loggedIn) {
+          showPaywallScreen();
+        } else {
+          showLoginScreen();
+        }
+        return;
+      }
+      // Если осталось <= 2 и не залогинены – показываем предложение логина
+      if (remaining <= 2 && !u.loggedIn) {
+        if (confirm(`You have ${remaining} conversions left. Sign in to continue using the remaining ones.`)) {
+          showLoginScreen();
+          return;
+        }
+        // Если пользователь не хочет входить, всё равно даём продолжить (но мы уже показали сообщение)
+        // Мы можем просто продолжить, но он может использовать оставшиеся без входа.
+      }
+    }
+    //
+    inputError.classList.remove('show');
+    const url = urlInput.value.trim();
+    const file = fileInput.files && fileInput.files[0];
 
     const token = await window.getFirebaseToken();
     if (!token) {
