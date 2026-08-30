@@ -652,6 +652,9 @@
   const auth = getAuth(app);
   const db = getFirestore(app);
 
+  // Проверка инициализации Firestore
+  console.log('Firestore instance:', db); // ЛОГ
+
   // Получаем элементы панели
   const emailSpan = document.getElementById('user-email');
   const subscriptionStatus = document.getElementById('subscription-status');
@@ -695,7 +698,6 @@
     if (!confirm('Are you sure you want to permanently delete your account?')) return;
     try {
       await user.delete();
-      // Помечаем документ как удалённый (опционально)
       await setDoc(doc(db, 'users', user.uid), { deleted: true }, { merge: true });
       localStorage.removeItem('firebaseToken');
       let u = resetDailyIfNeeded(getUsage());
@@ -709,40 +711,47 @@
     }
   };
 
-  // Функция проверки подписки (принимает объект user)
+  // Функция проверки подписки
   async function checkSubscription(user) {
     const uid = user.uid;
     const email = user.email;
+    console.log('checkSubscription called for uid:', uid, 'email:', email); // ЛОГ
     try {
-      const docSnap = await getDoc(doc(db, 'users', uid));
+      const docRef = doc(db, 'users', uid);
+      const docSnap = await getDoc(docRef);
+      console.log('Document exists?', docSnap.exists()); // ЛОГ
       if (docSnap.exists()) {
         const data = docSnap.data();
-        // Если email изменился, обновляем (опционально)
+        console.log('Existing data:', data); // ЛОГ
         if (data.email !== email) {
-          await setDoc(doc(db, 'users', uid), { email }, { merge: true });
+          console.log('Email changed, updating...'); // ЛОГ
+          await setDoc(docRef, { email }, { merge: true });
         }
         const status = data.subscriptionStatus || 'inactive';
         const expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
         const now = new Date();
         const isActive = status === 'active' && expiresAt && expiresAt > now;
+        console.log('Subscription active?', isActive); // ЛОГ
         return { 
           hasSubscription: isActive, 
           plan: data.plan || 'free',
           expiresAt: expiresAt ? expiresAt.toISOString().split('T')[0] : '—'
         };
       } else {
-        // Новый пользователь – создаём документ с email
-        await setDoc(doc(db, 'users', uid), {
+        // Новый пользователь – создаём документ
+        console.log('Creating new user document...'); // ЛОГ
+        await setDoc(docRef, {
           subscriptionStatus: 'inactive',
           plan: 'free',
           expiresAt: null,
           createdAt: new Date().toISOString(),
-          email: email // сохраняем почту
+          email: email
         });
+        console.log('Document created successfully'); // ЛОГ
         return { hasSubscription: false, plan: 'free', expiresAt: '—' };
       }
     } catch (err) {
-      console.error('Error checking subscription:', err);
+      console.error('Error in checkSubscription:', err); // ЛОГ
       return { hasSubscription: false, plan: 'free', expiresAt: '—' };
     }
   }
@@ -760,19 +769,18 @@
       subscriptionStatus.className = 'free';
       if (trialsContainer) trialsContainer.style.display = 'block';
     }
-    // Сохраняем в localStorage для синхронизации с showScreen
     localStorage.setItem('pac1_subscription', hasSubscription ? 'true' : 'false');
   }
 
   // Следим за состоянием авторизации
   onAuthStateChanged(auth, async (user) => {
+    console.log('onAuthStateChanged called with user:', user ? user.uid : null); // ЛОГ
     const modal = document.getElementById('user-modal');
     const modalEmail = document.getElementById('modal-email');
     const modalSubscription = document.getElementById('modal-subscription');
     const modalExpires = document.getElementById('modal-expires');
 
     if (user) {
-      // Получаем данные подписки из Firestore (передаём весь объект user)
       const sub = await checkSubscription(user);
       const hasSubscription = sub.hasSubscription;
 
@@ -794,13 +802,11 @@
 
       updateUIForSubscription(hasSubscription);
 
-      // Если открыт экран логина, переключаем на input
       const screenLogin = document.getElementById('screen-login');
       if (screenLogin.classList.contains('active')) {
         showScreen('input');
       }
     } else {
-      // Не залогинен
       emailSpan.textContent = 'Sign In';
       emailSpan.onclick = showLoginScreen;
       signoutBtn.style.display = 'none';
@@ -814,7 +820,6 @@
       u.loggedIn = false;
       saveUsage(u);
 
-      // Показываем счётчик (подписки нет)
       const trialsContainer = document.getElementById('trials-remaining')?.closest('.remaining-hint');
       if (trialsContainer) trialsContainer.style.display = 'block';
       localStorage.setItem('pac1_subscription', 'false');
