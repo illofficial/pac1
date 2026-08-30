@@ -403,6 +403,42 @@ const server = http.createServer((req, res) => {
     return; // важно: не идти к serveFile
   }
 
+  // 4. Создание чекаута Paddle
+  if (req.method === 'POST' && url.pathname === '/api/create-checkout') {
+    let body = [];
+    req.on('data', chunk => body.push(chunk));
+    req.on('end', async () => {
+      try {
+        const { priceId } = JSON.parse(Buffer.concat(body).toString());
+        
+        // Получаем токен пользователя из заголовка
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          throw new Error('Unauthorized');
+        }
+        const idToken = authHeader.split('Bearer ')[1];
+        const decodedToken = await admin.auth().verifyIdToken(idToken);
+        const userId = decodedToken.uid;
+  
+        // Создаём транзакцию в Paddle
+        const transaction = await paddle.transactions.create({
+          items: [{ priceId, quantity: 1 }],
+          customerId: userId,
+          successUrl: 'https://pac111.onrender.com/success',  // замените на свой домен
+          cancelUrl: 'https://pac111.onrender.com/cancel',
+        });
+  
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ checkoutUrl: transaction.checkoutUrl }));
+      } catch (err) {
+        console.error('❌ Ошибка создания чекаута:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    });
+    return;
+  }
+  
   // 4. Обработка статики (serveFile)
   let filePath = path.join(STATIC, url.pathname === '/' ? 'index.html' : url.pathname);
   if (!path.extname(filePath)) filePath = path.join(STATIC, 'index.html');
