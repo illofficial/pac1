@@ -1,15 +1,15 @@
 FROM node:22-alpine
 
-RUN apk add --no-cache python3 py3-pip ffmpeg bash wget && \
-    wget -O /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp && \
-    chmod a+rx /usr/local/bin/yt-dlp
+RUN apk add --no-cache python3 py3-pip ffmpeg bash wget
+
+# Устанавливаем yt-dlp и yt-dlp-proxy
+RUN pip3 install --break-system-packages yt-dlp yt-dlp-proxy
 
 WORKDIR /app
+COPY package*.json ./
+RUN npm install   # теперь не устанавливает ничего, но команда нужна
+COPY . .
 
-# Копируем всё, включая cookies.txt
-COPY index.html server.js cookies.txt ./
-
-RUN yt-dlp --version
-
+ENV YTDL_NO_UPDATE=1
 EXPOSE 80
 CMD ["node", "server.js"]

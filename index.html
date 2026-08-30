@@ -3,9 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://inv.nadeko.net https://invidious.fdn.fr https://yt.artemislena.eu https://invidious.perennialte.ch https://vid.puffyan.us; media-src 'self' blob:; img-src 'self' data: blob:;">
-<title>Premium Audio Converter</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://inv.nadeko.net https://invidious.fdn.fr https://yt.artemislena.eu https://invidious.perennialte.ch https://vid.puffyan.us https://*.firebaseapp.com https://*.googleapis.com https://*.firebaseio.com https://*.google.com; media-src 'self' blob:; img-src 'self' data: blob:;"><link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
 <style>
@@ -554,6 +552,70 @@
 <!-- DSP engine source. Runs directly in the main thread (this sandbox blocks
      constructing Workers from blob: URLs, so processing happens here with
      periodic yields between stages to keep the tab responsive). -->
+<script type="importmap">
+{
+  "imports": {
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"
+  }
+}
+</script>
+
+<script type="module">
+  import { initializeApp } from 'firebase/app';
+  import { 
+    getAuth, 
+    onAuthStateChanged,
+    signInWithEmailAndPassword,    // ← добавили
+    createUserWithEmailAndPassword // ← добавили
+  } from 'firebase/auth';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDHaMAQyAJUsCRhKdEUI-appY7UaeIoWbI",
+    authDomain: "pac1-51fbe.firebaseapp.com",
+    projectId: "pac1-51fbe",
+    storageBucket: "pac1-51fbe.firebasestorage.app",
+    messagingSenderId: "314399113786",
+    appId: "1:314399113786:web:d2db0c1fd9b60c1b2aab03",
+    measurementId: "G-8ZPVTE2J3G"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+
+  // Глобальная функция для получения токена
+  window.getFirebaseToken = async function() {
+    const user = auth.currentUser;
+    if (!user) {
+      console.warn('No user logged in');
+      return null;
+    }
+    try {
+      const token = await user.getIdToken();
+      console.log('Token obtained');
+      return token;
+    } catch (err) {
+      console.error('Error getting token:', err);
+      return null;
+    }
+  };
+
+  // Экспортируем функции входа/регистрации в window (для использования в onclick)
+  window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+  window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+  window.auth = auth;
+
+  // Следим за состоянием авторизации (для отладки)
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      console.log('User logged in:', user.email);
+    } else {
+      console.log('User logged out');
+    }
+  });
+
+  console.log('Firebase initialized, getFirebaseToken available');
+</script>
 <script id="dsp-src">
 // mastering_chain.js (v3)
 // Light "enhancement" chain, not a full mastering brickwall: gentle saturation +
@@ -2093,7 +2155,7 @@
     showScreen('paywall');
   }
 
-  loginBtn.addEventListener('click', () => {
+  loginBtn.addEventListener('click', async () => {
     const email = loginEmail.value.trim();
     const pw = loginPassword.value;
     if (!email || !pw) {
@@ -2106,19 +2168,42 @@
       loginError.classList.add('show');
       return;
     }
-    // Firebase auth will be plugged in here — for now, accept any valid-looking creds
-    let u = resetDailyIfNeeded(getUsage());
-    u.loggedIn = true;
-    saveUsage(u);
-    loginError.classList.remove('show');
-    // After login, check if still have trials
-    u = resetDailyIfNeeded(getUsage());
-    if (trialsLeft(u) > 0) {
+  
+    try {
+      let userCredential;
+      if (loginMode === 'signin') {
+        userCredential = await window.signInWithEmailAndPassword(auth, email, pw);
+      } else {
+        userCredential = await createUserWithEmailAndPassword(auth, email, pw);
+      }
+      // Успешный вход/регистрация
+      const user = userCredential.user;
+      // Получаем ID токен
+      const idToken = await user.getIdToken();
+      // Сохраняем токен в localStorage или в памяти
+      localStorage.setItem('firebaseToken', idToken);
+      // Обновляем usage
+      let u = resetDailyIfNeeded(getUsage());
+      u.loggedIn = true;
+      saveUsage(u);
+      loginError.classList.remove('show');
+      // Показываем экран ввода
       showScreen('input');
-    } else {
-      showPaywallScreen();
+    } catch (error) {
+      console.error('Firebase auth error:', error);
+      loginError.textContent = '⚠ ' + error.message;
+      loginError.classList.add('show');
     }
   });
+
+  async function logout() {
+    await signOut(auth);
+    localStorage.removeItem('firebaseToken');
+    let u = resetDailyIfNeeded(getUsage());
+    u.loggedIn = false;
+    saveUsage(u);
+    showScreen('input');
+  }
 
   loginSwitch.addEventListener('click', () => {
     loginMode = loginMode === 'signin' ? 'signup' : 'signin';
@@ -2299,12 +2384,26 @@
   }
 
   async function fetchYoutubeAudio(videoId, onProgress){
+    const token = await window.getFirebaseToken();
+    if (!token) {
+      showLoginScreen();
+      return;
+    }
+  
     onProgress(0.03);
     const isProd = getInvidiousInstances()[0] === '/api/yt/';
-
+    
     if (isProd) {
-      // Server-side yt-dlp: single request, returns raw audio
-      const resp = await fetch('/api/yt/' + videoId);
+      // Server-side: один запрос с токеном
+      const resp = await fetch('/api/yt/' + videoId, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (resp.status === 401) {
+        showLoginScreen();
+        throw new Error('Authentication required');
+      }
       if (!resp.ok) throw new Error('server returned ' + resp.status);
       onProgress(0.5);
       const blob = await resp.blob();
@@ -2312,7 +2411,7 @@
       const title = decodeURIComponent(resp.headers.get('X-Audio-Title') || 'youtube_audio');
       return { blob, title };
     }
-
+  
     // Local: Invidious API fallback
     let lastError = null;
     for (const instance of INVIDIOUS_DIRECT) {
@@ -2531,6 +2630,12 @@
       return;
     }
 
+    const token = await window.getFirebaseToken();
+    if (!token) {
+      showLoginScreen();
+      return;
+    }
+    
     // Usage gate: check trials before processing
     const usage = resetDailyIfNeeded(getUsage());
     const left = trialsLeft(usage);
