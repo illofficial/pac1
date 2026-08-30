@@ -2287,7 +2287,7 @@
     screens[name].classList.add('active');
   
     if (name === 'input') {
-      const u = resetWeeklyIfNeeded(getUsage());
+      const u = window.resetWeeklyIfNeeded(window.getUsage());
       const remaining = getRemaining(u);
       const limit = FREE_LIMIT;
       const el = document.getElementById('trials-remaining');
@@ -2351,6 +2351,12 @@
     saveUsage(u);
     return true;
   }
+
+  window.getUsage = getUsage;
+  window.saveUsage = saveUsage;
+  window.resetWeeklyIfNeeded = resetWeeklyIfNeeded;
+  window.getRemaining = getRemaining;
+  window.bumpUsage = bumpUsage;
   
   function renderTrialsDots(containerId, u){
     const el = document.getElementById(containerId);
@@ -2882,7 +2888,7 @@
     }
   
     // Проверка подписки (если залогинен и есть подписка – пропускаем лимит)
-    const u = resetWeeklyIfNeeded(getUsage());
+    const u = window.resetWeeklyIfNeeded(window.getUsage());
     let hasSubscription = false;
     if (u.loggedIn) {
       // Проверяем из localStorage или переменной (устанавливается в Firebase-модуле)
@@ -2911,9 +2917,6 @@
       }
     }
     //
-    inputError.classList.remove('show');
-    const url = urlInput.value.trim();
-    const file = fileInput.files && fileInput.files[0];
 
     const token = await window.getFirebaseToken();
     if (!token) {
