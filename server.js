@@ -60,9 +60,19 @@ function serveFile(res, filePath) {
 }
 
 function fetchWithApify(videoId, res) {
+  let fallbackCalled = false;
+
+  const callFallback = () => {
+    if (!fallbackCalled) {
+      fallbackCalled = true;
+      fetchWithYtDlpProxy(videoId, res);
+    }
+  };
+
   if (!APIFY_TOKEN) {
     console.warn(`[${videoId}] APIFY_TOKEN not set, skipping Apify`);
-    return fetchWithYtDlpProxy(videoId, res);
+    callFallback();
+    return;
   }
 
   console.log(`[${videoId}] Trying Apify (utils/youtube-link)`);
@@ -85,7 +95,7 @@ function fetchWithApify(videoId, res) {
       'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(payload),
     },
-    timeout: 180000,
+    timeout: 300000, // увеличен до 5 минут
   };
 
   const req = https.request(options, (apiRes) => {
@@ -137,13 +147,13 @@ function fetchWithApify(videoId, res) {
 
             ffmpeg.on('error', (err) => {
               console.error(`[${videoId}] ffmpeg error:`, err.message);
-              if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
+              if (!res.headersSent) callFallback();
             });
 
             ffmpeg.on('close', (code) => {
               if (code !== 0) {
                 console.error(`[${videoId}] ffmpeg exited with code ${code}`);
-                if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
+                if (!res.headersSent) callFallback();
                 return;
               }
 
@@ -159,7 +169,6 @@ function fetchWithApify(videoId, res) {
               console.log(`[${videoId}] WAV sent to client`);
             });
 
-            // ==== ИСПРАВЛЕНИЕ: обработка ошибок записи ====
             ffmpeg.stdin.write(webmBuffer, (err) => {
               if (err) console.error(`[${videoId}] stdin write error:`, err);
             });
@@ -170,28 +179,28 @@ function fetchWithApify(videoId, res) {
 
           webmRes.on('error', (err) => {
             console.error(`[${videoId}] WebM download error:`, err.message);
-            if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
+            if (!res.headersSent) callFallback();
           });
         }).on('error', (err) => {
           console.error(`[${videoId}] Failed to fetch downloadUrl:`, err.message);
-          if (!res.headersSent) fetchWithYtDlpProxy(videoId, res);
+          if (!res.headersSent) callFallback();
         });
       } catch (err) {
         console.error(`[${videoId}] Apify error:`, err.message);
-        fetchWithYtDlpProxy(videoId, res);
+        callFallback();
       }
     });
   });
 
   req.on('error', (err) => {
     console.error(`[${videoId}] Apify request error:`, err.message);
-    fetchWithYtDlpProxy(videoId, res);
+    callFallback();
   });
 
   req.on('timeout', () => {
     req.destroy();
     console.error(`[${videoId}] Apify timeout`);
-    fetchWithYtDlpProxy(videoId, res);
+    callFallback();
   });
 
   req.write(payload);
