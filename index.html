@@ -390,11 +390,58 @@
     .header-eq span{animation:none; height:40%;}
     .pac-man::before, .pac-man::after{animation:none;}
   }
+  #user-panel {
+    display: none; /* будет показан через JS */
+    background: #111;
+    border: 2px solid var(--wall);
+    padding: 8px 14px;
+    margin-bottom: 12px;
+    border-radius: 4px;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #user-panel.visible { display: flex; }
+  #user-email { color: var(--cyan); font-family: var(--font-body); font-size: 16px; cursor: pointer; text-decoration: underline; }
+  #signout-btn { background: none; border: 1px solid var(--red); color: var(--red); padding: 4px 12px; font-family: var(--font-body); font-size: 14px; cursor: pointer; }
+  
+  /* Модальное окно */
+  #user-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.8);
+    z-index: 999;
+    justify-content: center;
+    align-items: center;
+  }
+  #user-modal.visible { display: flex; }
+  #user-modal > div {
+    background: #111;
+    border: 3px solid var(--wall);
+    padding: 30px 24px;
+    max-width: 400px;
+    width: 90%;
+    border-radius: 8px;
+    box-shadow: 0 0 30px rgba(33,33,255,0.5);
+  }
+  #user-modal h2 { color: var(--yellow); font-family: var(--font-display); font-size: 18px; text-align: center; }
+  #user-modal .info { color: var(--dot); font-family: var(--font-body); font-size: 16px; margin-bottom: 8px; }
+  #user-modal .info span:first-child { color: var(--cyan); }
+  #user-modal .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+  #user-modal .actions button { background: none; border: 2px solid var(--red); color: var(--red); padding: 8px 20px; font-family: var(--font-body); font-size: 16px; cursor: pointer; }
+  #user-modal .actions button#modal-close-btn { border-color: var(--wall); color: var(--dot); }
 </style>
 </head>
 <body>
 
 <div class="stage">
+  <div id="user-panel" style="display: none; background: #111; border: 2px solid var(--wall); padding: 8px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; border-radius: 4px;">
+    <span id="user-email" style="color: var(--cyan); font-family: var(--font-body); font-size: 16px; cursor: pointer; text-decoration: underline;">user@example.com</span>
+    <button id="signout-btn" style="background: none; border: 1px solid var(--red); color: var(--red); padding: 4px 12px; font-family: var(--font-body); font-size: 14px; cursor: pointer;">Sign Out</button>
+  </div>
   <div class="crt">
     <div class="dots-corner tl"><span></span><span></span><span></span></div>
     <div class="dots-corner tr"><span></span><span></span><span></span></div>
@@ -613,6 +660,110 @@
       console.log('User logged out');
     }
   });
+
+  //---
+  window.signOutUser = async function() {
+    try {
+      await auth.signOut();
+      localStorage.removeItem('firebaseToken');
+      // Обновим usage (опционально)
+      let u = resetDailyIfNeeded(getUsage());
+      u.loggedIn = false;
+      saveUsage(u);
+      // Закрываем модалку, если открыта
+      document.getElementById('user-modal').classList.remove('visible');
+      // Показываем экран входа
+      showScreen('input');
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
+  };
+  
+  // Функция удаления аккаунта
+  window.deleteUserAccount = async function() {
+    const user = auth.currentUser;
+    if (!user) return;
+    if (!confirm('Are you sure you want to permanently delete your account? This cannot be undone.')) return;
+    try {
+      await user.delete();
+      localStorage.removeItem('firebaseToken');
+      // Обновляем usage
+      let u = resetDailyIfNeeded(getUsage());
+      u.loggedIn = false;
+      saveUsage(u);
+      document.getElementById('user-modal').classList.remove('visible');
+      showScreen('input');
+    } catch (err) {
+      console.error('Delete account error:', err);
+      // Если требуется повторная аутентификация, можно запросить пароль
+      alert('Error deleting account: ' + err.message);
+    }
+  };
+  
+  // Обработчик изменения состояния авторизации
+  onAuthStateChanged(auth, (user) => {
+    const panel = document.getElementById('user-panel');
+    const emailSpan = document.getElementById('user-email');
+    const modalEmail = document.getElementById('modal-email');
+    
+    if (user) {
+      // Пользователь залогинен
+      panel.classList.add('visible');
+      emailSpan.textContent = user.email;
+      modalEmail.textContent = user.email;
+      // Тут можно запросить информацию о подписке из Firestore или custom claims
+      // Пока статика
+      document.getElementById('modal-subscription').textContent = 'Free (3 conversions/day)';
+      document.getElementById('modal-expires').textContent = '—';
+      // Обновим глобальное состояние loggedIn
+      let u = resetDailyIfNeeded(getUsage());
+      u.loggedIn = true;
+      saveUsage(u);
+      // Если был показан экран логина, переключаем на input
+      const screenLogin = document.getElementById('screen-login');
+      if (screenLogin.classList.contains('active')) {
+        showScreen('input');
+      }
+    } else {
+      // Пользователь вышел
+      panel.classList.remove('visible');
+      emailSpan.textContent = '';
+      modalEmail.textContent = '';
+      document.getElementById('modal-subscription').textContent = 'Free';
+      document.getElementById('modal-expires').textContent = '—';
+      let u = resetDailyIfNeeded(getUsage());
+      u.loggedIn = false;
+      saveUsage(u);
+      // Если модалка открыта, закрываем
+      document.getElementById('user-modal').classList.remove('visible');
+    }
+  });
+  
+  // Обработчики кликов на панель и модалку
+  document.getElementById('user-email').addEventListener('click', () => {
+    document.getElementById('user-modal').classList.toggle('visible');
+  });
+  
+  document.getElementById('modal-close-btn').addEventListener('click', () => {
+    document.getElementById('user-modal').classList.remove('visible');
+  });
+  
+  // Закрываем модалку по клику на фон
+  document.getElementById('user-modal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) {
+      e.currentTarget.classList.remove('visible');
+    }
+  });
+  
+  // Кнопка Sign Out на панели
+  document.getElementById('signout-btn').addEventListener('click', window.signOutUser);
+  
+  // Кнопки в модалке
+  document.getElementById('modal-signout-btn').addEventListener('click', window.signOutUser);
+  document.getElementById('modal-remove-btn').addEventListener('click', window.deleteUserAccount);
+  
+  // Также обновим функцию showLoginScreen, чтобы она не показывала панель при выходе? Нет, она управляется onAuthStateChanged.
+  //---
 
   console.log('Firebase initialized, getFirebaseToken available');
 </script>
@@ -2812,6 +2963,20 @@
 
 })();
 </script>
-
+<div id="user-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 999; justify-content: center; align-items: center;">
+  <div style="background: #111; border: 3px solid var(--wall); padding: 30px 24px; max-width: 400px; width: 90%; border-radius: 8px; box-shadow: 0 0 30px rgba(33,33,255,0.5);">
+    <h2 style="color: var(--yellow); font-family: var(--font-display); font-size: 18px; text-align: center;">Account Details</h2>
+    <div style="margin: 20px 0;">
+      <div style="color: var(--dot); font-family: var(--font-body); font-size: 16px; margin-bottom: 8px;"><span style="color: var(--cyan);">Email:</span> <span id="modal-email">—</span></div>
+      <div style="color: var(--dot); font-family: var(--font-body); font-size: 16px; margin-bottom: 8px;"><span style="color: var(--cyan);">Subscription:</span> <span id="modal-subscription">Free</span></div>
+      <div style="color: var(--dot); font-family: var(--font-body); font-size: 16px; margin-bottom: 8px;"><span style="color: var(--cyan);">Expires:</span> <span id="modal-expires">—</span></div>
+    </div>
+    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+      <button id="modal-signout-btn" style="background: none; border: 2px solid var(--red); color: var(--red); padding: 8px 20px; font-family: var(--font-body); font-size: 16px; cursor: pointer;">Sign Out</button>
+      <button id="modal-remove-btn" style="background: none; border: 2px solid var(--red); color: var(--red); padding: 8px 20px; font-family: var(--font-body); font-size: 16px; cursor: pointer;">Remove Account</button>
+      <button id="modal-close-btn" style="background: none; border: 2px solid var(--wall); color: var(--dot); padding: 8px 20px; font-family: var(--font-body); font-size: 16px; cursor: pointer;">Close</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
