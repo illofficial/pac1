@@ -66,6 +66,78 @@ function serveFile(res, filePath) {
   }
 }
 
+const https = require('https');
+function fetchWithYoutubeMusicDownloader(videoId, res) {
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    const APIFY_TOKEN = process.env.APIFY_TOKEN; // Ваш токен из переменных окружения
+
+    // 1. Подготовка входных данных для актора maximedupre/youtube-music-downloader
+    const runInput = {
+        urls: [{ url: url }],  // Список URL для скачивания[reference:3]
+        // "country": "US",    // Опционально: страна для geo-targeting[reference:4]
+        // "format": "mp3",    // Можно указать формат: mp3, m4a, flac, wav и др.[reference:5]
+    };
+
+    const payload = JSON.stringify(runInput);
+
+    // 2. Отправка POST-запроса к API Apify
+    const options = {
+        hostname: 'api.apify.com',
+        port: 443,
+        path: `/v2/acts/maximedupre~youtube-music-downloader/run-sync-get-dataset-items?token=${APIFY_TOKEN}`,
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload),
+        },
+        timeout: 180000, // Таймаут, как и у вас
+    };
+
+    const req = https.request(options, (apiRes) => {
+        let data = '';
+        apiRes.on('data', chunk => data += chunk);
+        apiRes.on('end', () => {
+            if (apiRes.statusCode !== 200) {
+                console.error(`Apify API error: ${apiRes.statusCode} - ${data}`);
+                // Здесь можно вызвать fallback (например, fetchWithYtDlpProxy)
+                return;
+            }
+            try {
+                const result = JSON.parse(data);
+                if (!Array.isArray(result) || result.length === 0) {
+                    throw new Error('No data in Apify response');
+                }
+
+                const item = result[0];
+                // 3. Обработка результата
+                // Актор maximedupre/youtube-music-downloader возвращает прямую ссылку на скачанный файл.
+                const downloadUrl = item.url; // или item.downloadUrl? Проверьте структуру ответа
+
+                if (!downloadUrl) {
+                    throw new Error('No download URL in response');
+                }
+
+                // 4. Скачивание и отправка аудио клиенту (как в fetchWithApify)
+                https.get(downloadUrl, (audioRes) => {
+                    // ... ваш код для отправки аудио-потока в res
+                });
+
+            } catch (err) {
+                console.error('Error processing Apify response:', err);
+                // Fallback
+            }
+        });
+    });
+
+    req.on('error', (err) => {
+        console.error('Apify request error:', err);
+        // Fallback
+    });
+
+    req.write(payload);
+    req.end();
+}
+
 function fetchWithApify(videoId, res) {
   let fallbackCalled = false;
 
@@ -279,7 +351,8 @@ function handleYt(videoId, res, req) {
     .then(user => {
       console.log(`User ${user.uid} requested video ${videoId}`);
       if (APIFY_TOKEN) {
-        fetchWithApify(videoId, res);
+        fetchWithYoutubeMusicDownloader(videoId, res);
+        //fetchWithApify(videoId, res);
       } else {
         fetchWithYtDlpProxy(videoId, res);
       }
