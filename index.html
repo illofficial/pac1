@@ -607,6 +607,20 @@
       </div>
     </section>
 
+     <!-- SCREEN 7 — SUCCESS -->
+    <section class="screen" id="screen-success">
+      <div class="win-title">PAYMENT SUCCESSFUL</div>
+      <div class="win-sub">Your subscription is now active.</div>
+      <button class="btn" id="success-back-btn">BACK TO CONVERTER</button>
+    </section>
+
+    <!-- SCREEN 8 — CANCEL (отмена оплаты) -->
+    <section class="screen" id="screen-cancel">
+      <div class="gameover-title">⚠️ PAYMENT CANCELED</div>
+      <div class="gameover-msg">You canceled the payment process. You can try again anytime.</div>
+      <button class="btn ghost" id="cancel-back-btn">BACK TO CONVERTER</button>
+    </section>
+    
     <div class="footer-note">PREMIUM AUDIO CONVERTER — PROTOTYPE</div>
   </div>
 </div>
@@ -2448,11 +2462,53 @@
     showScreen('input');
   });
 
-  paywallBackBtn.addEventListener('click', () => {
-    let u = resetWeeklyIfNeeded(getUsage());
-    u.loggedIn = false;
-    saveUsage(u);
-    showScreen('input');
+  paywallBtn.addEventListener('click', async () => {
+    if (!selectedPlan) {
+      alert('Please select a plan first.');
+      return;
+    }
+  
+    // Маппинг планов на priceId из Paddle
+    const priceMap = {
+      'weekly': 'pri_01m19tj9f3e1xgb1qhs5ayn18f', 
+      'yearly': 'pri_01m19tk7zz8j4q4fg8f8fybjkb',
+      'lifetime': 'pri_01m19tmdjaay21rqyatcnbjma5'
+    };
+  
+    const priceId = priceMap[selectedPlan];
+    if (!priceId) {
+      alert('Invalid plan selected.');
+      return;
+    }
+  
+    try {
+      const token = await window.getFirebaseToken();
+      if (!token) {
+        showLoginScreen();
+        return;
+      }
+  
+      const response = await fetch('/api/create-checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ priceId })
+      });
+  
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create checkout');
+      }
+  
+      const { checkoutUrl } = await response.json();
+      // Перенаправляем на страницу оплаты Paddle
+      window.location.href = checkoutUrl;
+    } catch (err) {
+      console.error('❌ Ошибка оплаты:', err);
+      alert('Failed to start payment: ' + err.message);
+    }
   });
 
   planList.addEventListener('click', (e) => {
@@ -2475,6 +2531,21 @@
     u.loginUsed = 0;
     saveUsage(u);
     showScreen('input');
+  });
+
+  document.getElementById('success-back-btn').addEventListener('click', () => {
+    // Переходим на главный экран и обновляем статус подписки
+    showScreen('input');
+    // Самый простой способ обновить статус – перезагрузить страницу,
+    // чтобы onAuthStateChanged снова проверил Firestore
+    location.reload();
+  });
+  
+  // Кнопка на экране отмены
+  document.getElementById('cancel-back-btn').addEventListener('click', () => {
+    showScreen('input');
+    // Здесь перезагрузка не обязательна, но можно оставить для чистоты
+    location.reload();
   });
 
   // ---------------- progress / Pac-Man UI ----------------
