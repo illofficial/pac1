@@ -638,6 +638,12 @@
     setDoc 
   } from 'firebase/firestore';
 
+  // Берем глобальные функции из основного скрипта
+  const resetDailyIfNeeded = window.resetDailyIfNeeded;
+  const getUsage = window.getUsage;
+  const saveUsage = window.saveUsage;
+  const showScreen = window.showScreen;
+
   const firebaseConfig = {
     apiKey: "AIzaSyDHaMAQyAJUsCRhKdEUI-appY7UaeIoWbI",
     authDomain: "pac1-51fbe.firebaseapp.com",
@@ -651,9 +657,6 @@
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
-
-  // Проверка инициализации Firestore
-  console.log('Firestore instance:', db); // ЛОГ
 
   // Получаем элементы панели
   const emailSpan = document.getElementById('user-email');
@@ -715,43 +718,34 @@
   async function checkSubscription(user) {
     const uid = user.uid;
     const email = user.email;
-    console.log('checkSubscription called for uid:', uid, 'email:', email); // ЛОГ
     try {
-      const docRef = doc(db, 'users', uid);
-      const docSnap = await getDoc(docRef);
-      console.log('Document exists?', docSnap.exists()); // ЛОГ
+      const docSnap = await getDoc(doc(db, 'users', uid));
       if (docSnap.exists()) {
         const data = docSnap.data();
-        console.log('Existing data:', data); // ЛОГ
         if (data.email !== email) {
-          console.log('Email changed, updating...'); // ЛОГ
-          await setDoc(docRef, { email }, { merge: true });
+          await setDoc(doc(db, 'users', uid), { email }, { merge: true });
         }
         const status = data.subscriptionStatus || 'inactive';
         const expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
         const now = new Date();
         const isActive = status === 'active' && expiresAt && expiresAt > now;
-        console.log('Subscription active?', isActive); // ЛОГ
         return { 
           hasSubscription: isActive, 
           plan: data.plan || 'free',
           expiresAt: expiresAt ? expiresAt.toISOString().split('T')[0] : '—'
         };
       } else {
-        // Новый пользователь – создаём документ
-        console.log('Creating new user document...'); // ЛОГ
-        await setDoc(docRef, {
+        await setDoc(doc(db, 'users', uid), {
           subscriptionStatus: 'inactive',
           plan: 'free',
           expiresAt: null,
           createdAt: new Date().toISOString(),
           email: email
         });
-        console.log('Document created successfully'); // ЛОГ
         return { hasSubscription: false, plan: 'free', expiresAt: '—' };
       }
     } catch (err) {
-      console.error('Error in checkSubscription:', err); // ЛОГ
+      console.error('Error in checkSubscription:', err);
       return { hasSubscription: false, plan: 'free', expiresAt: '—' };
     }
   }
@@ -774,7 +768,7 @@
 
   // Следим за состоянием авторизации
   onAuthStateChanged(auth, async (user) => {
-    console.log('onAuthStateChanged called with user:', user ? user.uid : null); // ЛОГ
+    console.log('onAuthStateChanged called with user:', user ? user.uid : 'null');
     const modal = document.getElementById('user-modal');
     const modalEmail = document.getElementById('modal-email');
     const modalSubscription = document.getElementById('modal-subscription');
@@ -810,10 +804,8 @@
       emailSpan.textContent = 'Sign In';
       emailSpan.onclick = showLoginScreen;
       signoutBtn.style.display = 'none';
-
       subscriptionStatus.textContent = '';
       subscriptionStatus.className = '';
-
       modal.classList.remove('visible');
 
       let u = resetDailyIfNeeded(getUsage());
