@@ -351,8 +351,8 @@ function handleYt(videoId, res, req) {
     .then(user => {
       console.log(`User ${user.uid} requested video ${videoId}`);
       if (APIFY_TOKEN) {
-        fetchWithYoutubeMusicDownloader(videoId, res);
-        //fetchWithApify(videoId, res);
+        //fetchWithYoutubeMusicDownloader(videoId, res);
+        fetchWithApify(videoId, res);
       } else {
         fetchWithYtDlpProxy(videoId, res);
       }
