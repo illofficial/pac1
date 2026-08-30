@@ -66,7 +66,7 @@ function serveFile(res, filePath) {
   }
 }
 
-const https = require('https');
+//const https = require('https');
 function fetchWithYoutubeMusicDownloader(videoId, res) {
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     const APIFY_TOKEN = process.env.APIFY_TOKEN; // Ваш токен из переменных окружения
