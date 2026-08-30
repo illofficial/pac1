@@ -639,7 +639,7 @@
   } from 'firebase/firestore';
 
   // Берем глобальные функции из основного скрипта
-  const resetDailyIfNeeded = window.resetDailyIfNeeded;
+  const resetWeeklyIfNeeded = window.resetWeeklyIfNeeded;
   const getUsage = window.getUsage;
   const saveUsage = window.saveUsage;
   const showScreen = window.showScreen;
@@ -684,7 +684,7 @@
     try {
       await auth.signOut();
       localStorage.removeItem('firebaseToken');
-      let u = resetDailyIfNeeded(getUsage());
+      let u = resetWeeklyIfNeeded(getUsage());
       u.loggedIn = false;
       saveUsage(u);
       document.getElementById('user-modal').classList.remove('visible');
@@ -703,7 +703,7 @@
       await user.delete();
       await setDoc(doc(db, 'users', user.uid), { deleted: true }, { merge: true });
       localStorage.removeItem('firebaseToken');
-      let u = resetDailyIfNeeded(getUsage());
+      let u = resetWeeklyIfNeeded(getUsage());
       u.loggedIn = false;
       saveUsage(u);
       document.getElementById('user-modal').classList.remove('visible');
@@ -804,7 +804,7 @@
       modalSubscription.textContent = hasSubscription ? (sub.plan || 'Active') : 'Free';
       modalExpires.textContent = sub.expiresAt || '—';
 
-      let u = resetDailyIfNeeded(getUsage());
+      let u = resetWeeklyIfNeeded(getUsage());
       u.loggedIn = true;
       saveUsage(u);
 
@@ -822,7 +822,7 @@
       subscriptionStatus.className = '';
       modal.classList.remove('visible');
 
-      let u = resetDailyIfNeeded(getUsage());
+      let u = resetWeeklyIfNeeded(getUsage());
       u.loggedIn = false;
       saveUsage(u);
 
@@ -2387,7 +2387,7 @@
   let loginMode = 'signin'; // 'signin' | 'signup'
 
   function showLoginScreen(){
-    let u = resetDailyIfNeeded(getUsage());
+    let u = resetWeeklyIfNeeded(getUsage());
     const left = trialsLeft(u);
     loginTrialsHint.innerHTML = 'You have <b>' + left + '</b> conversion' + (left !== 1 ? 's' : '') + ' left today.';
     loginError.classList.remove('show');
@@ -2402,7 +2402,7 @@
   window.showLoginScreen = showLoginScreen;
 
   function showPaywallScreen(){
-    let u = resetDailyIfNeeded(getUsage());
+    let u = resetWeeklyIfNeeded(getUsage());
     const left = trialsLeft(u);
     paywallTrialsHint.innerHTML = 'You have <b>' + left + '</b> conversion' + (left !== 1 ? 's' : '') + ' left today.';
     selectedPlan = null;
@@ -2440,7 +2440,7 @@
       // Сохраняем токен в localStorage или в памяти
       localStorage.setItem('firebaseToken', idToken);
       // Обновляем usage
-      let u = resetDailyIfNeeded(getUsage());
+      let u = resetWeeklyIfNeeded(getUsage());
       u.loggedIn = true;
       saveUsage(u);
       loginError.classList.remove('show');
@@ -2456,7 +2456,7 @@
   async function logout() {
     await signOut(auth);
     localStorage.removeItem('firebaseToken');
-    let u = resetDailyIfNeeded(getUsage());
+    let u = resetWeeklyIfNeeded(getUsage());
     u.loggedIn = false;
     saveUsage(u);
     showScreen('input');
@@ -2474,7 +2474,7 @@
   });
 
   paywallBackBtn.addEventListener('click', () => {
-    let u = resetDailyIfNeeded(getUsage());
+    let u = resetWeeklyIfNeeded(getUsage());
     u.loggedIn = false;
     saveUsage(u);
     showScreen('input');
@@ -2494,7 +2494,7 @@
     if (!selectedPlan) return;
     // Stripe / payment gateway will be plugged in here.
     // For now, simulate success: grant unlimited for this session.
-    let u = resetDailyIfNeeded(getUsage());
+    let u = resetWeeklyIfNeeded(getUsage());
     u.loggedIn = true;
     u.freeUsed = 0;
     u.loginUsed = 0;
@@ -2925,7 +2925,7 @@
     }
     
     // Usage gate: check trials before processing
-    const usage = resetDailyIfNeeded(getUsage());
+    const usage = resetWeeklyIfNeeded(getUsage());
     const left = trialsLeft(usage);
     if (left <= 0) {
       if (usage.loggedIn) {
