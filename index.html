@@ -639,24 +639,18 @@
 </script>
 <script type="module">
   import { initializeApp } from 'firebase/app';
-  import { 
-    getAuth, 
+  import {
+    getAuth,
     onAuthStateChanged,
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword
   } from 'firebase/auth';
-  import { 
-    getFirestore, 
-    doc, 
+  import {
+    getFirestore,
+    doc,
     getDoc,
-    setDoc 
+    setDoc
   } from 'firebase/firestore';
-
-  // Берем глобальные функции из основного скрипта
-  const resetWeeklyIfNeeded = window.resetWeeklyIfNeeded;
-  const getUsage = window.getUsage;
-  const saveUsage = window.saveUsage;
-  const showScreen = window.showScreen;
 
   const firebaseConfig = {
     apiKey: "AIzaSyDHaMAQyAJUsCRhKdEUI-appY7UaeIoWbI",
@@ -677,14 +671,19 @@
   const subscriptionStatus = document.getElementById('subscription-status');
   const signoutBtn = document.getElementById('signout-btn');
 
-  // Глобальные функции
+  // Глобальная функция для получения токена
   window.getFirebaseToken = async function() {
     const user = auth.currentUser;
-    if (!user) return null;
+    if (!user) {
+      console.warn('No user logged in');
+      return null;
+    }
     try {
-      return await user.getIdToken();
-    } catch (e) {
-      console.error('Error getting token:', e);
+      const token = await user.getIdToken();
+      console.log('Token obtained');
+      return token;
+    } catch (err) {
+      console.error('Error getting token:', err);
       return null;
     }
   };
@@ -698,11 +697,11 @@
     try {
       await auth.signOut();
       localStorage.removeItem('firebaseToken');
-      let u = resetWeeklyIfNeeded(getUsage());
+      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
       u.loggedIn = false;
-      saveUsage(u);
+      window.saveUsage(u);
       document.getElementById('user-modal').classList.remove('visible');
-      showScreen('input');
+      window.showScreen('input');
     } catch (err) {
       console.error('Sign out error:', err);
     }
@@ -717,38 +716,46 @@
       await user.delete();
       await setDoc(doc(db, 'users', user.uid), { deleted: true }, { merge: true });
       localStorage.removeItem('firebaseToken');
-      let u = resetWeeklyIfNeeded(getUsage());
+      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
       u.loggedIn = false;
-      saveUsage(u);
+      window.saveUsage(u);
       document.getElementById('user-modal').classList.remove('visible');
-      showScreen('input');
+      window.showScreen('input');
     } catch (err) {
       console.error('Delete account error:', err);
       alert('Error: ' + err.message);
     }
   };
 
-  // Функция проверки подписки
+  // Функция проверки подписки (принимает объект user)
   async function checkSubscription(user) {
+    // Защита от null
+    if (!user || !user.uid) {
+      console.warn('checkSubscription called without valid user');
+      return { hasSubscription: false, plan: 'free', expiresAt: '—' };
+    }
+
     const uid = user.uid;
-    const email = user.email;
+    const email = user.email || '';
+
     try {
       const docSnap = await getDoc(doc(db, 'users', uid));
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.email !== email) {
+        if (data.email !== email && email) {
           await setDoc(doc(db, 'users', uid), { email }, { merge: true });
         }
         const status = data.subscriptionStatus || 'inactive';
         const expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
         const now = new Date();
         const isActive = status === 'active' && expiresAt && expiresAt > now;
-        return { 
-          hasSubscription: isActive, 
+        return {
+          hasSubscription: isActive,
           plan: data.plan || 'free',
           expiresAt: expiresAt ? expiresAt.toISOString().split('T')[0] : '—'
         };
       } else {
+        // Новый пользователь – создаём документ
         await setDoc(doc(db, 'users', uid), {
           subscriptionStatus: 'inactive',
           plan: 'free',
@@ -759,7 +766,7 @@
         return { hasSubscription: false, plan: 'free', expiresAt: '—' };
       }
     } catch (err) {
-      console.error('Error in checkSubscription:', err);
+      console.error('Error checking subscription:', err);
       return { hasSubscription: false, plan: 'free', expiresAt: '—' };
     }
   }
@@ -782,28 +789,14 @@
 
   // Следим за состоянием авторизации
   onAuthStateChanged(auth, async (user) => {
-    console.log('onAuthStateChanged called with user:', user ? user.uid : 'null');
     const modal = document.getElementById('user-modal');
     const modalEmail = document.getElementById('modal-email');
     const modalSubscription = document.getElementById('modal-subscription');
     const modalExpires = document.getElementById('modal-expires');
-    const sub = await checkSubscription(user);
 
     if (user) {
-      const hasSubscription = sub.hasSubscription; // из Firestore
-      localStorage.setItem('pac1_subscription', hasSubscription ? 'true' : 'false');
-      let u = resetWeeklyIfNeeded(getUsage());
-      u.loggedIn = true;
-      saveUsage(u);
-    } else {
-      localStorage.removeItem('pac1_subscription');
-      let u = resetWeeklyIfNeeded(getUsage());
-      u.loggedIn = false;
-      saveUsage(u);
-    }
-
-    if (user) {
-      //const sub = await checkSubscription(user);
+      // Получаем данные подписки из Firestore
+      const sub = await checkSubscription(user);
       const hasSubscription = sub.hasSubscription;
 
       emailSpan.textContent = user.email;
@@ -811,34 +804,37 @@
       signoutBtn.style.display = 'block';
       signoutBtn.onclick = window.signOutUser;
 
-      subscriptionStatus.textContent = hasSubscription ? '⭐ SUBSCRIBED ⭐' : 'FREE';
+      subscriptionStatus.textContent = hasSubscription ? '⭐ Subscribed' : 'Free';
       subscriptionStatus.className = hasSubscription ? 'subscribed' : 'free';
 
       modalEmail.textContent = user.email;
       modalSubscription.textContent = hasSubscription ? (sub.plan || 'Active') : 'Free';
       modalExpires.textContent = sub.expiresAt || '—';
 
-      let u = resetWeeklyIfNeeded(getUsage());
+      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
       u.loggedIn = true;
-      saveUsage(u);
+      window.saveUsage(u);
 
       updateUIForSubscription(hasSubscription);
 
       const screenLogin = document.getElementById('screen-login');
-      if (screenLogin.classList.contains('active')) {
-        showScreen('input');
+      if (screenLogin && screenLogin.classList.contains('active')) {
+        window.showScreen('input');
       }
     } else {
+      // Не залогинен
       emailSpan.textContent = 'Sign In';
-      emailSpan.onclick = showLoginScreen;
+      emailSpan.onclick = window.showLoginScreen || showLoginScreen;
       signoutBtn.style.display = 'none';
+
       subscriptionStatus.textContent = '';
       subscriptionStatus.className = '';
-      modal.classList.remove('visible');
 
-      let u = resetWeeklyIfNeeded(getUsage());
+      if (modal) modal.classList.remove('visible');
+
+      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
       u.loggedIn = false;
-      saveUsage(u);
+      window.saveUsage(u);
 
       const trialsContainer = document.getElementById('trials-remaining')?.closest('.remaining-hint');
       if (trialsContainer) trialsContainer.style.display = 'block';
@@ -846,17 +842,30 @@
     }
   });
 
-  // Обработчики модального окна
-  document.getElementById('modal-close-btn').addEventListener('click', () => {
-    document.getElementById('user-modal').classList.remove('visible');
-  });
-  document.getElementById('user-modal').addEventListener('click', (e) => {
-    if (e.target === e.currentTarget) {
-      e.currentTarget.classList.remove('visible');
-    }
-  });
-  document.getElementById('modal-signout-btn').addEventListener('click', window.signOutUser);
-  document.getElementById('modal-remove-btn').addEventListener('click', window.deleteUserAccount);
+  // Обработчики модального окна (если они есть)
+  const modalCloseBtn = document.getElementById('modal-close-btn');
+  const modalSignoutBtn = document.getElementById('modal-signout-btn');
+  const modalRemoveBtn = document.getElementById('modal-remove-btn');
+  const userModal = document.getElementById('user-modal');
+
+  if (modalCloseBtn) {
+    modalCloseBtn.addEventListener('click', () => {
+      if (userModal) userModal.classList.remove('visible');
+    });
+  }
+  if (userModal) {
+    userModal.addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) {
+        e.currentTarget.classList.remove('visible');
+      }
+    });
+  }
+  if (modalSignoutBtn) {
+    modalSignoutBtn.addEventListener('click', window.signOutUser);
+  }
+  if (modalRemoveBtn) {
+    modalRemoveBtn.addEventListener('click', window.deleteUserAccount);
+  }
 
   console.log('Firebase initialized with Firestore');
 </script>
