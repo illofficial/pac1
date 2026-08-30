@@ -81,7 +81,7 @@ function fetchWithApify(videoId, res) {
   const input = {
     videos: [{ url: url }],
     proxyConfiguration: { useApifyProxy: true, apifyProxyGroups: ['RESIDENTIAL'] },
-    memory: 4096,
+    memory: 8192,
   };
 
   const payload = JSON.stringify(input);
@@ -90,7 +90,7 @@ function fetchWithApify(videoId, res) {
   const options = {
     hostname: 'api.apify.com',
     port: 443,
-    path: `/v2/acts/utils~youtube-link/run-sync-get-dataset-items?token=${APIFY_TOKEN}&memory=4096`,
+    path: `/v2/acts/utils~youtube-link/run-sync-get-dataset-items?token=${APIFY_TOKEN}&memory=8192`,
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
