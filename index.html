@@ -731,40 +731,41 @@
   
   // Следим за состоянием авторизации
   onAuthStateChanged(auth, (user) => {
+    const modal = document.getElementById('user-modal');
+    const modalEmail = document.getElementById('modal-email');
+    const modalSubscription = document.getElementById('modal-subscription');
+    const modalExpires = document.getElementById('modal-expires');
+  
     if (user) {
       // Залогинен
-      panel.classList.add('visible');
-      userEmail.textContent = user.email;
-      signoutBtn.style.display = 'inline-block';
-      signinBtn.style.display = 'none';
-      // Обновляем модалку
+      emailSpan.textContent = user.email;
+      emailSpan.onclick = () => modal.classList.toggle('visible');
+      signoutBtn.style.display = 'block';
+      signoutBtn.onclick = window.signOutUser;
+  
       modalEmail.textContent = user.email;
-      // Здесь можно запросить данные подписки из Firestore, пока статика
       modalSubscription.textContent = 'Free (3 conversions/day)';
       modalExpires.textContent = '—';
-      // Обновляем usage (loggedIn)
+  
       let u = resetDailyIfNeeded(getUsage());
       u.loggedIn = true;
       saveUsage(u);
-      // Если был экран логина, переключаем на input
+  
       const screenLogin = document.getElementById('screen-login');
-      if (screenLogin && screenLogin.classList.contains('active')) {
+      if (screenLogin.classList.contains('active')) {
         showScreen('input');
       }
     } else {
-      // Не залогинен
-      panel.classList.remove('visible');
+      // Не залогинен – показываем "Sign In"
+      emailSpan.textContent = 'Sign In';
+      emailSpan.onclick = showLoginScreen; // <-- открывает экран логина
       signoutBtn.style.display = 'none';
-      signinBtn.style.display = 'inline-block';
-      userEmail.textContent = 'Sign In';
-      // Закрываем модалку
+  
       modal.classList.remove('visible');
-      // Обновляем usage
+  
       let u = resetDailyIfNeeded(getUsage());
       u.loggedIn = false;
       saveUsage(u);
-      // Показываем экран ввода (если мы не на других экранах)
-      // Но чтобы не переключать принудительно, можно ничего не делать.
     }
   });
   
