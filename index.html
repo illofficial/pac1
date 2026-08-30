@@ -2388,7 +2388,7 @@
 
   function showLoginScreen(){
     let u = resetWeeklyIfNeeded(getUsage());
-    const left = trialsLeft(u);
+    const left = getRemaining(u);
     loginTrialsHint.innerHTML = 'You have <b>' + left + '</b> conversion' + (left !== 1 ? 's' : '') + ' left today.';
     loginError.classList.remove('show');
     loginEmail.value = '';
@@ -2403,7 +2403,7 @@
 
   function showPaywallScreen(){
     let u = resetWeeklyIfNeeded(getUsage());
-    const left = trialsLeft(u);
+    const left = getRemaining(u);
     paywallTrialsHint.innerHTML = 'You have <b>' + left + '</b> conversion' + (left !== 1 ? 's' : '') + ' left today.';
     selectedPlan = null;
     paywallBtn.disabled = true;
@@ -2926,7 +2926,8 @@
     
     // Usage gate: check trials before processing
     const usage = resetWeeklyIfNeeded(getUsage());
-    const left = trialsLeft(usage);
+    const left = getRemaining(usage);
+    //const left = trialsLeft(u);
     if (left <= 0) {
       if (usage.loggedIn) {
         showPaywallScreen();
