@@ -391,7 +391,7 @@
     .pac-man::before, .pac-man::after{animation:none;}
   }
   #user-panel {
-    display: none; /* будет показан через JS */
+    display: none;
     background: #111;
     border: 2px solid var(--wall);
     padding: 8px 14px;
@@ -402,7 +402,9 @@
   }
   #user-panel.visible { display: flex; }
   #user-email { color: var(--cyan); font-family: var(--font-body); font-size: 16px; cursor: pointer; text-decoration: underline; }
+  #user-actions { display: flex; gap: 10px; }
   #signout-btn { background: none; border: 1px solid var(--red); color: var(--red); padding: 4px 12px; font-family: var(--font-body); font-size: 14px; cursor: pointer; }
+  #signin-btn { background: none; border: 1px solid var(--cyan); color: var(--cyan); padding: 4px 12px; font-family: var(--font-body); font-size: 14px; cursor: pointer; }
   
   /* Модальное окно */
   #user-modal {
@@ -440,7 +442,10 @@
 <div class="stage">
   <div id="user-panel" style="display: none; background: #111; border: 2px solid var(--wall); padding: 8px 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; border-radius: 4px;">
     <span id="user-email" style="color: var(--cyan); font-family: var(--font-body); font-size: 16px; cursor: pointer; text-decoration: underline;">user@example.com</span>
-    <button id="signout-btn" style="background: none; border: 1px solid var(--red); color: var(--red); padding: 4px 12px; font-family: var(--font-body); font-size: 14px; cursor: pointer;">Sign Out</button>
+    <div id="user-actions">
+      <button id="signout-btn" style="background: none; border: 1px solid var(--red); color: var(--red); padding: 4px 12px; font-family: var(--font-body); font-size: 14px; cursor: pointer;">Sign Out</button>
+      <button id="signin-btn" style="display: none; background: none; border: 1px solid var(--cyan); color: var(--cyan); padding: 4px 12px; font-family: var(--font-body); font-size: 14px; cursor: pointer;">Sign In</button>
+    </div>
   </div>
   <div class="crt">
     <div class="dots-corner tl"><span></span><span></span><span></span></div>
@@ -610,162 +615,152 @@
 
 <script type="module">
   import { initializeApp } from 'firebase/app';
-  import { 
-    getAuth, 
-    onAuthStateChanged,
-    signInWithEmailAndPassword,    // ← добавили
-    createUserWithEmailAndPassword // ← добавили
-  } from 'firebase/auth';
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyDHaMAQyAJUsCRhKdEUI-appY7UaeIoWbI",
-    authDomain: "pac1-51fbe.firebaseapp.com",
-    projectId: "pac1-51fbe",
-    storageBucket: "pac1-51fbe.firebasestorage.app",
-    messagingSenderId: "314399113786",
-    appId: "1:314399113786:web:d2db0c1fd9b60c1b2aab03",
-    measurementId: "G-8ZPVTE2J3G"
-  };
-
+  import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+  
+  const firebaseConfig = { /* ... ваш конфиг ... */ };
+  
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
-
-  // Глобальная функция для получения токена
+  
+  // Глобальные функции
   window.getFirebaseToken = async function() {
     const user = auth.currentUser;
-    if (!user) {
-      console.warn('No user logged in');
-      return null;
-    }
+    if (!user) return null;
     try {
-      const token = await user.getIdToken();
-      console.log('Token obtained');
-      return token;
-    } catch (err) {
-      console.error('Error getting token:', err);
+      return await user.getIdToken();
+    } catch (e) {
+      console.error('Error getting token:', e);
       return null;
     }
   };
-
-  // Экспортируем функции входа/регистрации в window (для использования в onclick)
+  
+  // Функции для входа/регистрации, чтобы использовать из onclick
   window.signInWithEmailAndPassword = signInWithEmailAndPassword;
   window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
   window.auth = auth;
-
-  // Следим за состоянием авторизации (для отладки)
-  onAuthStateChanged(auth, (user) => {
-    if (user) {
-      console.log('User logged in:', user.email);
-    } else {
-      console.log('User logged out');
-    }
-  });
-
-  //---
+  
+  // Функция выхода (глобальная)
   window.signOutUser = async function() {
     try {
-      await auth.signOut();
+      await signOut(auth);
       localStorage.removeItem('firebaseToken');
-      // Обновим usage (опционально)
-      let u = resetDailyIfNeeded(getUsage());
-      u.loggedIn = false;
-      saveUsage(u);
-      // Закрываем модалку, если открыта
+      // Закрыть модалку
       document.getElementById('user-modal').classList.remove('visible');
-      // Показываем экран входа
-      showScreen('input');
+      // Показать экран ввода (но он покажется через onAuthStateChanged)
     } catch (err) {
       console.error('Sign out error:', err);
     }
   };
   
-  // Функция удаления аккаунта
+  // Функция удаления аккаунта (глобальная)
   window.deleteUserAccount = async function() {
     const user = auth.currentUser;
     if (!user) return;
-    if (!confirm('Are you sure you want to permanently delete your account? This cannot be undone.')) return;
+    if (!confirm('Are you sure you want to permanently delete your account?')) return;
     try {
       await user.delete();
       localStorage.removeItem('firebaseToken');
+      document.getElementById('user-modal').classList.remove('visible');
+      // onAuthStateChanged обновит UI
+    } catch (err) {
+      console.error('Delete account error:', err);
+      alert('Error: ' + err.message);
+    }
+  };
+  
+  // Получаем элементы UI
+  const panel = document.getElementById('user-panel');
+  const userEmail = document.getElementById('user-email');
+  const signoutBtn = document.getElementById('signout-btn');
+  const signinBtn = document.getElementById('signin-btn');
+  const modal = document.getElementById('user-modal');
+  const modalEmail = document.getElementById('modal-email');
+  const modalSubscription = document.getElementById('modal-subscription');
+  const modalExpires = document.getElementById('modal-expires');
+  const modalSignout = document.getElementById('modal-signout-btn');
+  const modalRemove = document.getElementById('modal-remove-btn');
+  const modalClose = document.getElementById('modal-close-btn');
+  
+  // Назначаем обработчики
+  if (userEmail) {
+    userEmail.addEventListener('click', () => {
+      if (auth.currentUser) {
+        modal.classList.toggle('visible');
+      } else {
+        // Если не залогинен, можно показать экран логина
+        showLoginScreen();
+      }
+    });
+  }
+  
+  if (signoutBtn) {
+    signoutBtn.addEventListener('click', window.signOutUser);
+  }
+  if (signinBtn) {
+    signinBtn.addEventListener('click', () => {
+      showLoginScreen();
+    });
+  }
+  if (modalSignout) {
+    modalSignout.addEventListener('click', window.signOutUser);
+  }
+  if (modalRemove) {
+    modalRemove.addEventListener('click', window.deleteUserAccount);
+  }
+  if (modalClose) {
+    modalClose.addEventListener('click', () => {
+      modal.classList.remove('visible');
+    });
+  }
+  // Закрытие модалки по клику на фон
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.remove('visible');
+      }
+    });
+  }
+  
+  // Следим за состоянием авторизации
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      // Залогинен
+      panel.classList.add('visible');
+      userEmail.textContent = user.email;
+      signoutBtn.style.display = 'inline-block';
+      signinBtn.style.display = 'none';
+      // Обновляем модалку
+      modalEmail.textContent = user.email;
+      // Здесь можно запросить данные подписки из Firestore, пока статика
+      modalSubscription.textContent = 'Free (3 conversions/day)';
+      modalExpires.textContent = '—';
+      // Обновляем usage (loggedIn)
+      let u = resetDailyIfNeeded(getUsage());
+      u.loggedIn = true;
+      saveUsage(u);
+      // Если был экран логина, переключаем на input
+      const screenLogin = document.getElementById('screen-login');
+      if (screenLogin && screenLogin.classList.contains('active')) {
+        showScreen('input');
+      }
+    } else {
+      // Не залогинен
+      panel.classList.remove('visible');
+      signoutBtn.style.display = 'none';
+      signinBtn.style.display = 'inline-block';
+      userEmail.textContent = 'Sign In';
+      // Закрываем модалку
+      modal.classList.remove('visible');
       // Обновляем usage
       let u = resetDailyIfNeeded(getUsage());
       u.loggedIn = false;
       saveUsage(u);
-      document.getElementById('user-modal').classList.remove('visible');
-      showScreen('input');
-    } catch (err) {
-      console.error('Delete account error:', err);
-      // Если требуется повторная аутентификация, можно запросить пароль
-      alert('Error deleting account: ' + err.message);
-    }
-  };
-  
-  // Обработчик изменения состояния авторизации
-  onAuthStateChanged(auth, (user) => {
-    const panel = document.getElementById('user-panel');
-    const emailSpan = document.getElementById('user-email');
-    const modalEmail = document.getElementById('modal-email');
-    
-    if (user) {
-      // Пользователь залогинен
-      panel.classList.add('visible');
-      emailSpan.textContent = user.email;
-      modalEmail.textContent = user.email;
-      // Тут можно запросить информацию о подписке из Firestore или custom claims
-      // Пока статика
-      document.getElementById('modal-subscription').textContent = 'Free (3 conversions/day)';
-      document.getElementById('modal-expires').textContent = '—';
-      // Обновим глобальное состояние loggedIn
-      let u = resetDailyIfNeeded(getUsage());
-      u.loggedIn = true;
-      saveUsage(u);
-      // Если был показан экран логина, переключаем на input
-      const screenLogin = document.getElementById('screen-login');
-      if (screenLogin.classList.contains('active')) {
-        showScreen('input');
-      }
-    } else {
-      // Пользователь вышел
-      panel.classList.remove('visible');
-      emailSpan.textContent = '';
-      modalEmail.textContent = '';
-      document.getElementById('modal-subscription').textContent = 'Free';
-      document.getElementById('modal-expires').textContent = '—';
-      let u = resetDailyIfNeeded(getUsage());
-      u.loggedIn = false;
-      saveUsage(u);
-      // Если модалка открыта, закрываем
-      document.getElementById('user-modal').classList.remove('visible');
+      // Показываем экран ввода (если мы не на других экранах)
+      // Но чтобы не переключать принудительно, можно ничего не делать.
     }
   });
   
-  // Обработчики кликов на панель и модалку
-  document.getElementById('user-email').addEventListener('click', () => {
-    document.getElementById('user-modal').classList.toggle('visible');
-  });
-  
-  document.getElementById('modal-close-btn').addEventListener('click', () => {
-    document.getElementById('user-modal').classList.remove('visible');
-  });
-  
-  // Закрываем модалку по клику на фон
-  document.getElementById('user-modal').addEventListener('click', (e) => {
-    if (e.target === e.currentTarget) {
-      e.currentTarget.classList.remove('visible');
-    }
-  });
-  
-  // Кнопка Sign Out на панели
-  document.getElementById('signout-btn').addEventListener('click', window.signOutUser);
-  
-  // Кнопки в модалке
-  document.getElementById('modal-signout-btn').addEventListener('click', window.signOutUser);
-  document.getElementById('modal-remove-btn').addEventListener('click', window.deleteUserAccount);
-  
-  // Также обновим функцию showLoginScreen, чтобы она не показывала панель при выходе? Нет, она управляется onAuthStateChanged.
-  //---
-
-  console.log('Firebase initialized, getFirebaseToken available');
+  console.log('Firebase initialized with UI handlers.');
 </script>
 <script id="dsp-src">
 // mastering_chain.js (v3)
