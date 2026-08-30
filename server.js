@@ -4,6 +4,13 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const admin = require('firebase-admin');
+const { Paddle, Environment } = require('@paddle/paddle-node-sdk');
+
+const paddle = new Paddle(process.env.PADDLE_API_KEY, {
+  environment: process.env.PADDLE_ENVIRONMENT === 'production' 
+    ? Environment.production 
+    : Environment.sandbox,
+});
 
 // Инициализация Firebase Admin
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
@@ -286,6 +293,99 @@ function handleYt(videoId, res, req) {
         res.end();
       }
     });
+}
+
+// ------ Обработчики событий Paddle ------
+async function handleTransactionCompleted(data) {
+  const customerId = data.customerId; // это ваш userId из Firebase
+  const subscriptionId = data.subscriptionId;
+  const nextBilledAt = data.items?.[0]?.nextBilledAt || null;
+
+  if (!customerId) {
+    console.error('❌ Нет customerId в вебхуке');
+    return;
+  }
+
+  const userRef = admin.firestore().collection('users').doc(customerId);
+  await userRef.set({
+    subscriptionStatus: 'active',
+    paddleSubscriptionId: subscriptionId,
+    expiresAt: nextBilledAt,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  console.log(`✅ Подписка активирована для пользователя ${customerId}`);
+}
+
+async function handleSubscriptionCanceled(data) {
+  const customerId = data.customerId;
+  if (!customerId) return;
+
+  const userRef = admin.firestore().collection('users').doc(customerId);
+  await userRef.set({
+    subscriptionStatus: 'inactive',
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  console.log(`❌ Подписка отменена для пользователя ${customerId}`);
+}
+
+async function handleSubscriptionUpdated(data) {
+  // Например, изменилась дата оплаты или статус
+  const customerId = data.customerId;
+  const status = data.status; // 'active', 'past_due', 'canceled' и т.д.
+  if (!customerId) return;
+
+  const userRef = admin.firestore().collection('users').doc(customerId);
+  await userRef.set({
+    subscriptionStatus: status === 'active' ? 'active' : 'inactive',
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  console.log(`🔄 Подписка обновлена для ${customerId}: ${status}`);
+}
+
+// ----- Обработка вебхуков от Paddle -----
+if (req.method === 'POST' && url.pathname === '/api/webhooks/paddle') {
+  let body = [];
+  req.on('data', chunk => body.push(chunk));
+  req.on('end', async () => {
+    const rawBody = Buffer.concat(body);
+
+    try {
+      // Проверяем подпись и парсим событие
+      const eventData = await paddle.webhooks.unmarshal(
+        rawBody,
+        req.headers['paddle-signature'], // обязательно с маленькой буквы
+        process.env.PADDLE_WEBHOOK_SECRET
+      );
+
+      console.log('🔔 Получен вебхук:', eventData.eventType);
+
+      // Обрабатываем события
+      switch (eventData.eventType) {
+        case 'transaction.completed':
+          await handleTransactionCompleted(eventData.data);
+          break;
+        case 'subscription.canceled':
+          await handleSubscriptionCanceled(eventData.data);
+          break;
+        case 'subscription.updated':
+          await handleSubscriptionUpdated(eventData.data);
+          break;
+        default:
+          console.log(`ℹ️ Необработанный тип: ${eventData.eventType}`);
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok' }));
+    } catch (err) {
+      console.error('❌ Ошибка вебхука:', err);
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+  });
+  return; // важно: прерываем обработку, чтобы не попасть в serveFile
 }
 
 const server = http.createServer((req, res) => {
