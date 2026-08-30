@@ -438,6 +438,17 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+
+  if (url.pathname === '/success') {
+    // Отдаём тот же index.html, но клиентская логика покажет нужный экран
+    serveFile(res, path.join(STATIC, 'index.html'));
+    return;
+  }
+  
+  if (url.pathname === '/cancel') {
+    serveFile(res, path.join(STATIC, 'index.html'));
+    return;
+  }
   
   // 4. Обработка статики (serveFile)
   let filePath = path.join(STATIC, url.pathname === '/' ? 'index.html' : url.pathname);
