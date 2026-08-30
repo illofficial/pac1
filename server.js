@@ -423,7 +423,7 @@ const server = http.createServer((req, res) => {
         // Создаём транзакцию в Paddle
         const transaction = await paddle.transactions.create({
           items: [{ priceId, quantity: 1 }],
-          customerId: userId,
+          //customerId: userId,
           successUrl: 'https://pac111.onrender.com/success',  // замените на свой домен
           cancelUrl: 'https://pac111.onrender.com/cancel',
         });
