@@ -2288,25 +2288,12 @@
   
     if (name === 'input') {
       const u = window.resetWeeklyIfNeeded(window.getUsage());
-      const remaining = getRemaining(u);
-      const limit = FREE_LIMIT;
+      const remaining = window.getRemaining(u);
+      const limit = FREE_LIMIT; // должно быть определено как 4
       const el = document.getElementById('trials-remaining');
       if (el) el.textContent = remaining;
-  
-      // Обновляем подсказку
-      const hintEl = document.querySelector('.hint:last-child'); // или специальный элемент
-      if (remaining === 0) {
-        // Показываем предложение подписки или логина
-        if (u.loggedIn) {
-          hintEl.textContent = 'You have used all free conversions. Please subscribe to continue.';
-        } else {
-          hintEl.textContent = 'You have used all free conversions. Please sign in or subscribe.';
-        }
-      } else if (remaining <= 2 && !u.loggedIn) {
-        hintEl.textContent = `You have ${remaining} conversions left. Sign in to continue using the remaining ones.`;
-      } else {
-        hintEl.textContent = 'mp3 / wav / ogg / flac · youtube links · limit — 10 minutes · output in WAV';
-      }
+      const totalEl = document.getElementById('trials-total');
+      if (totalEl) totalEl.textContent = limit;
     }
   }
 
@@ -2346,9 +2333,9 @@
   }
   
   function bumpUsage() {
-    let u = resetWeeklyIfNeeded(getUsage());
+    let u = window.resetWeeklyIfNeeded(window.getUsage());
     u.used = (u.used || 0) + 1;
-    saveUsage(u);
+    window.saveUsage(u);
     return true;
   }
 
@@ -2358,18 +2345,6 @@
   window.getRemaining = getRemaining;
   window.bumpUsage = bumpUsage;
   
-  function renderTrialsDots(containerId, u){
-    const el = document.getElementById(containerId);
-    if (!el) return;
-    const limit = u.loggedIn ? FREE_DAILY + LOGIN_DAILY : FREE_DAILY;
-    const used = u.loggedIn ? u.freeUsed + u.loginUsed : u.freeUsed;
-    el.innerHTML = '';
-    for (let i = 0; i < limit; i++) {
-      const d = document.createElement('span');
-      d.className = 'dot' + (i < used ? ' used' : '');
-      el.appendChild(d);
-    }
-  }
   // ---------------- login / paywall UI ----------------
   const loginEmail = document.getElementById('login-email');
   const loginPassword = document.getElementById('login-password');
@@ -2925,17 +2900,17 @@
     }
     
     // Usage gate: check trials before processing
-    const usage = resetWeeklyIfNeeded(getUsage());
-    const left = getRemaining(usage);
-    //const left = trialsLeft(u);
-    if (left <= 0) {
-      if (usage.loggedIn) {
-        showPaywallScreen();
-      } else {
-        showLoginScreen();
-      }
-      return;
-    }
+    // const usage = resetWeeklyIfNeeded(getUsage());
+    // const left = getRemaining(usage);
+    // //const left = trialsLeft(u);
+    // if (left <= 0) {
+    //   if (usage.loggedIn) {
+    //     showPaywallScreen();
+    //   } else {
+    //     showLoginScreen();
+    //   }
+    //   return;
+    // }
 
     revokeAll();
     showScreen('loading');
