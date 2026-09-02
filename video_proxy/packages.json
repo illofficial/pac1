@@ -1,0 +1,6 @@
+{
+  "name": "video-download-proxy",
+  "version": "1.0.0",
+  "main": "video-download-proxy.js",
+  "dependencies": {}
+}
