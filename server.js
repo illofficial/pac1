@@ -287,6 +287,49 @@ function fetchWithApify(videoId, res) {
   req.end();
 }
 
+async function fetchAudioViaVideoDownloadApi(videoId, res) {
+    const PROXY_URL = process.env.VIDEO_DOWNLOAD_PROXY_URL || 'https://ваш-сервис.onrender.com';
+
+    try {
+        // 1. Отправляем запрос на скачивание
+        const downloadRes = await fetch(
+            `${PROXY_URL}/download?url=https://www.youtube.com/watch?v=${videoId}&format=mp3`
+        );
+        if (!downloadRes.ok) throw new Error('Failed to start download');
+        const { jobId } = await downloadRes.json();
+
+        // 2. Ожидаем завершения (polling)
+        let status = 'processing';
+        let downloadUrl = null;
+        while (status === 'processing') {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            const statusRes = await fetch(`${PROXY_URL}/status?id=${jobId}`);
+            const data = await statusRes.json();
+            status = data.status;
+            downloadUrl = data.downloadUrl;
+            console.log(`[${videoId}] Job ${jobId}: ${data.progress}/1000`);
+        }
+
+        if (!downloadUrl) throw new Error('Download URL not found');
+
+        // 3. Скачиваем файл и отправляем клиенту
+        const fileRes = await fetch(downloadUrl);
+        const buffer = await fileRes.buffer();
+
+        res.writeHead(200, {
+            'Content-Type': 'audio/mpeg',
+            'Content-Length': buffer.length,
+            'X-Audio-Title': encodeURIComponent('youtube_audio'),
+        });
+        res.end(buffer);
+
+    } catch (err) {
+        console.error(`[${videoId}] VideoDownloadApi error:`, err.message);
+        // Резерв: ваш существующий метод
+        fetchWithApify(videoId, res);
+    }
+}
+
 function fetchWithYtDlpProxy(videoId, res) {
   console.log(`[${videoId}] Trying yt-dlp-proxy as fallback`);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -352,7 +395,8 @@ function handleYt(videoId, res, req) {
       console.log(`User ${user.uid} requested video ${videoId}`);
       if (APIFY_TOKEN) {
         //fetchWithYoutubeMusicDownloader(videoId, res);
-        fetchWithApify(videoId, res);
+        //fetchWithApify(videoId, res);
+        fetchAudioViaVideoDownloadApi(videoId, res);
       } else {
         fetchWithYtDlpProxy(videoId, res);
       }
