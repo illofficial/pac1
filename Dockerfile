@@ -6,10 +6,11 @@ RUN apk add --no-cache python3 py3-pip ffmpeg bash wget
 RUN pip3 install --break-system-packages yt-dlp yt-dlp-proxy
 
 WORKDIR /app
+COPY video-download-proxy.js .
 COPY package*.json ./
 RUN npm install   # теперь не устанавливает ничего, но команда нужна
 COPY . .
 
 ENV YTDL_NO_UPDATE=1
 EXPOSE 80
-CMD ["node", "server.js"]
+CMD ["node", "server.js", "video-download-proxy.js"]
