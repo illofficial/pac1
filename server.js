@@ -519,6 +519,95 @@ const server = http.createServer((req, res) => {
     return; // важно: не идти к serveFile
   }
 
+  // ----- Прокси для video-download-api.com -----
+if (req.method === 'GET' && url.pathname === '/api/video-download') {
+  const videoUrl = url.searchParams.get('url');
+  const format = url.searchParams.get('format') || 'mp3';
+
+  if (!videoUrl) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Missing "url" parameter' }));
+    return;
+  }
+
+  // Ваш API-ключ (добавьте в переменные окружения на Render)
+  const API_KEY = process.env.VIDEO_DOWNLOAD_API_KEY;
+  if (!API_KEY) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'API key not configured' }));
+    return;
+  }
+
+  const apiParams = new URLSearchParams({
+    url: videoUrl,
+    format: format,
+    apikey: API_KEY,
+    add_info: '1',
+    allow_extended_duration: '1',
+    no_merge: '0'
+  });
+
+  const apiUrl = `https://p.savenow.to/ajax/download.php?${apiParams}`;
+
+  https.get(apiUrl, (apiRes) => {
+    let data = '';
+    apiRes.on('data', chunk => data += chunk);
+    apiRes.on('end', () => {
+      try {
+        const json = JSON.parse(data);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          jobId: json.id,
+          progressUrl: `https://p.savenow.to/ajax/progress.php?id=${json.id}`
+        }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid API response' }));
+      }
+    });
+  }).on('error', (err) => {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message }));
+  });
+  return;
+}
+
+// ----- Статус для video-download-api -----
+if (req.method === 'GET' && url.pathname === '/api/video-download-status') {
+  const jobId = url.searchParams.get('id');
+
+  if (!jobId) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Missing "id" parameter' }));
+    return;
+  }
+
+  const apiUrl = `https://p.savenow.to/ajax/progress.php?id=${jobId}`;
+
+  https.get(apiUrl, (apiRes) => {
+    let data = '';
+    apiRes.on('data', chunk => data += chunk);
+    apiRes.on('end', () => {
+      try {
+        const json = JSON.parse(data);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          progress: json.progress,
+          downloadUrl: json.download_url || null,
+          status: json.progress === 1000 ? 'completed' : 'processing'
+        }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid API response' }));
+      }
+    });
+  }).on('error', (err) => {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message }));
+  });
+  return;
+}
+  
   // 4. Создание чекаута Paddle
   if (req.method === 'POST' && url.pathname === '/api/create-checkout') {
     let body = [];
