@@ -728,11 +728,11 @@
     
     <div class="footer-note" style="text-align:center; font-size:12px; color:#4d4d84; margin-top:20px; letter-spacing:0.4px;">
       <div style="margin-bottom:6px;">
-        <a href="#" onclick="showScreen('terms'); return false;" style="color: var(--cyan); text-decoration:underline;">Terms of Service</a>
+        <span onclick="window.showScreen('terms')" style="color: var(--cyan); text-decoration:underline; cursor:pointer;">Terms of Service</span>
         &nbsp;|&nbsp;
-        <a href="#" onclick="showScreen('privacy'); return false;" style="color: var(--cyan); text-decoration:underline;">Privacy Notice</a>
+        <span onclick="window.showScreen('privacy')" style="color: var(--cyan); text-decoration:underline; cursor:pointer;">Privacy Notice</span>
         &nbsp;|&nbsp;
-        <a href="#" onclick="showScreen('refund'); return false;" style="color: var(--cyan); text-decoration:underline;">Refund Policy</a>
+        <span onclick="window.showScreen('refund')" style="color: var(--cyan); text-decoration:underline; cursor:pointer;">Refund Policy</span>
       </div>
       <span>PREMIUM AUDIO CONVERTER — PROTOTYPE</span>
     </div>
@@ -2437,6 +2437,8 @@
     }
   }
 
+  window.showScreen = showScreen;
+  
   // ---------------- usage tracking (localStorage) ----------------
   //const FREE_DAILY = 3;
   //const LOGIN_DAILY = 3;
