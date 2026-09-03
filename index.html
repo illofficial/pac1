@@ -2528,6 +2528,7 @@
     planList.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
     showScreen('paywall');
   }
+  window.showPaywallScreen = showPaywallScreen;
 
   loginBtn.addEventListener('click', async () => {
     const email = loginEmail.value.trim();
