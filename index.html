@@ -3308,6 +3308,15 @@ if (currentPath === '/success') {
   // Используем существующую функцию showPaywallScreen() для обновления hint
   showPaywallScreen();
   window.history.replaceState({}, document.title, '/');
+} else if (currentPath === '/terms') {
+  showScreen('terms');
+  window.history.replaceState({}, document.title, '/');
+} else if (currentPath === '/privacy') {
+  showScreen('privacy');
+  window.history.replaceState({}, document.title, '/');
+} else if (currentPath === '/refund') {
+  showScreen('refund');
+  window.history.replaceState({}, document.title, '/');
 } else {
   // Если пользователь не залогинен, показываем вход (можно оставить как есть)
   // Но чтобы не переопределять экран при загрузке, проверяем, активен ли экран входа
