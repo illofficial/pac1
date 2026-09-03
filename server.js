@@ -763,6 +763,21 @@ if (req.method === 'GET' && url.pathname === '/api/video-download-status') {
     serveFile(res, path.join(STATIC, 'index.html'));
     return;
   }
+
+  if (url.pathname === '/terms') {
+    serveFile(res, path.join(STATIC, 'index.html'));
+    return;
+  }
+  
+  if (url.pathname === '/privacy') {
+    serveFile(res, path.join(STATIC, 'index.html'));
+    return;
+  }
+  
+  if (url.pathname === '/refund') {
+    serveFile(res, path.join(STATIC, 'index.html'));
+    return;
+  }
   
   // 4. Обработка статики (serveFile)
   let filePath = path.join(STATIC, url.pathname === '/' ? 'index.html' : url.pathname);
