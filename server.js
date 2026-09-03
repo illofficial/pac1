@@ -162,11 +162,10 @@ async function fetchAudioViaTornadoApi(videoId, res) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                url: videoUrl,
-                audio_only: true,        // Скачиваем только аудио[reference:12]
-                format: 'mp3',           // Сохраняем в формате MP3[reference:13]
-                // audio_bitrate: '192k', // Можно указать качество, 192k по умолчанию[reference:14]
-            }),
+              url: videoUrl,
+              audio_only: true,
+              // format и audio_bitrate не указываем — будет M4A с наивысшим битрейтом
+          }),
         });
 
         if (!createJobResponse.ok) {
