@@ -3303,6 +3303,10 @@ if (currentPath === '/success') {
   showScreen('cancel');
   // Убираем /cancel из адресной строки
   window.history.replaceState({}, document.title, '/');
+} else if (currentPath === '/paywall') {
+  // Используем существующую функцию showPaywallScreen() для обновления hint
+  showPaywallScreen();
+  window.history.replaceState({}, document.title, '/');
 } else {
   // Если пользователь не залогинен, показываем вход (можно оставить как есть)
   // Но чтобы не переопределять экран при загрузке, проверяем, активен ли экран входа
