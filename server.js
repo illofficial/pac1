@@ -138,6 +138,109 @@ function fetchWithYoutubeMusicDownloader(videoId, res) {
     req.end();
 }
 
+// --- Новая функция для скачивания через Tornado API ---
+async function fetchAudioViaTornadoApi(videoId, res) {
+    const TORNADO_API_KEY = process.env.TORNADO_API_KEY;
+    const API_BASE_URL = 'https://api.tornadoapi.io'; // Базовый URL для всех запросов[reference:7][reference:8]
+
+    // Если ключ не найден, переключаемся на резервный метод (например, Apify)
+    if (!TORNADO_API_KEY) {
+        console.warn('TORNADO_API_KEY not set, falling back to Apify.');
+        return fetchWithApify(videoId, res);
+    }
+
+    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+    try {
+        console.log(`[${videoId}] Creating Tornado job...`);
+
+        // 1. Отправляем запрос на создание задачи на скачивание аудио[reference:9][reference:10]
+        const createJobResponse = await fetch(`${API_BASE_URL}/jobs`, {
+            method: 'POST',
+            headers: {
+                'x-api-key': TORNADO_API_KEY, // Ключ передаётся в заголовке[reference:11]
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                url: videoUrl,
+                audio_only: true,        // Скачиваем только аудио[reference:12]
+                format: 'mp3',           // Сохраняем в формате MP3[reference:13]
+                // audio_bitrate: '192k', // Можно указать качество, 192k по умолчанию[reference:14]
+            }),
+        });
+
+        if (!createJobResponse.ok) {
+            const errorText = await createJobResponse.text();
+            throw new Error(`Tornado API error (${createJobResponse.status}): ${errorText}`);
+        }
+
+        const jobData = await createJobResponse.json();
+        const jobId = jobData.job_id; // Получаем ID задачи[reference:15]
+        console.log(`[${videoId}] Tornado job created: ${jobId}`);
+
+        // 2. Ожидаем завершения задачи (polling)[reference:16][reference:17]
+        let jobStatus = 'Pending';
+        let downloadUrl = null;
+        let attempts = 0;
+        const maxAttempts = 60; // Ждём максимум 60 * 3 = 180 секунд
+
+        while (jobStatus !== 'Completed' && jobStatus !== 'Failed' && jobStatus !== 'Warning') {
+            if (attempts >= maxAttempts) {
+                throw new Error('Job timed out after 180 seconds.');
+            }
+            await new Promise(resolve => setTimeout(resolve, 3000)); // Ждём 3 секунды[reference:18]
+
+            const statusResponse = await fetch(`${API_BASE_URL}/jobs/${jobId}`, {
+                headers: { 'x-api-key': TORNADO_API_KEY },
+            });
+
+            if (!statusResponse.ok) {
+                const errorText = await statusResponse.text();
+                throw new Error(`Status check failed (${statusResponse.status}): ${errorText}`);
+            }
+
+            const statusData = await statusResponse.json();
+            jobStatus = statusData.status; // Статусы: "Pending", "Processing", "Completed", "Failed"[reference:19]
+            downloadUrl = statusData.s3_url; // Ссылка на готовый файл[reference:20]
+
+            console.log(`[${videoId}] Job ${jobId} status: ${jobStatus}${downloadUrl ? ', file ready!' : ''}`);
+            attempts++;
+        }
+
+        if (jobStatus === 'Failed' || jobStatus === 'Warning') {
+            throw new Error(`Job failed with status: ${jobStatus}`);
+        }
+
+        if (!downloadUrl) {
+            throw new Error('Download URL (s3_url) is missing from the final response.');
+        }
+
+        // 3. Скачиваем аудио по полученной ссылке и отправляем клиенту
+        console.log(`[${videoId}] Downloading audio from: ${downloadUrl}`);
+        const fileResponse = await fetch(downloadUrl);
+        if (!fileResponse.ok) {
+            throw new Error(`Failed to download audio file: ${fileResponse.status}`);
+        }
+
+        // Получаем аудио как буфер
+        const audioBuffer = await fileResponse.arrayBuffer();
+
+        // Отправляем аудио клиенту
+        res.writeHead(200, {
+            'Content-Type': 'audio/mpeg',
+            'Content-Length': audioBuffer.byteLength,
+            'X-Audio-Title': encodeURIComponent(`audio_${videoId}`),
+        });
+        res.end(Buffer.from(audioBuffer));
+        console.log(`[${videoId}] Audio sent to client via Tornado API`);
+
+    } catch (error) {
+        console.error(`[${videoId}] Tornado API error:`, error);
+        // В случае ошибки переключаемся на резервный метод (Apify)
+        fetchWithApify(videoId, res);
+    }
+}
+
 function fetchWithApify(videoId, res) {
   let fallbackCalled = false;
 
@@ -393,9 +496,11 @@ function handleYt(videoId, res, req) {
     .then(user => {
       console.log(`User ${user.uid} requested video ${videoId}`);
       if (APIFY_TOKEN) {
+        console.log(`User ${user.uid} requested video ${videoId}`);
         //fetchWithYoutubeMusicDownloader(videoId, res);
         //fetchWithApify(videoId, res);
-        fetchAudioViaVideoDownloadApi(videoId, res);
+        //fetchAudioViaVideoDownloadApi(videoId, res);
+        fetchAudioViaTornadoApi(videoId, res);
       } else {
         fetchWithYtDlpProxy(videoId, res);
       }
