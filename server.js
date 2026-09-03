@@ -758,6 +758,11 @@ if (req.method === 'GET' && url.pathname === '/api/video-download-status') {
     serveFile(res, path.join(STATIC, 'index.html'));
     return;
   }
+
+  if (url.pathname === '/paywall') {
+    serveFile(res, path.join(STATIC, 'index.html'));
+    return;
+  }
   
   // 4. Обработка статики (serveFile)
   let filePath = path.join(STATIC, url.pathname === '/' ? 'index.html' : url.pathname);
