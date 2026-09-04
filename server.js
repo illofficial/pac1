@@ -607,6 +607,7 @@ const server = http.createServer((req, res) => {
         });
   
         res.writeHead(200, { 'Content-Type': 'application/json' });
+        console.log('✅ Sending checkoutUrl to client:', transaction.checkoutUrl);
         res.end(JSON.stringify({ checkoutUrl: transaction.checkoutUrl }));
       } catch (err) {
         console.error('❌ Ошибка создания чекаута:', err);
