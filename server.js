@@ -515,54 +515,74 @@ function handleYt(videoId, res, req) {
     });
 }
 
-// ------ Обработчики событий Paddle ------
+// ------ Обработчики событий Paddle -----
 async function handleTransactionCompleted(data) {
-  const customerId = data.customerId; // это ваш userId из Firebase
-  const subscriptionId = data.subscriptionId;
-  const nextBilledAt = data.items?.[0]?.nextBilledAt || null;
+  const userId = data.custom_data?.userId || data.custom_data?.user_id;
+  const paddleCustomerId = data.customer_id;
+  const subscriptionId = data.subscription_id;
 
-  if (!customerId) {
-    console.error('❌ Нет customerId в вебхуке');
+  if (!userId) {
+    console.error('❌ Нет userId в custom_data:', JSON.stringify(data).slice(0, 500));
     return;
   }
-
-  const userRef = admin.firestore().collection('users').doc(customerId);
+  const userRef = admin.firestore().collection('users').doc(userId);
   await userRef.set({
     subscriptionStatus: 'active',
+    paddleCustomerId,
     paddleSubscriptionId: subscriptionId,
-    expiresAt: nextBilledAt,
     updatedAt: new Date().toISOString(),
   }, { merge: true });
-
-  console.log(`✅ Подписка активирована для пользователя ${customerId}`);
+  console.log(`✅ Подписка активирована для ${userId}`);
 }
 
 async function handleSubscriptionCanceled(data) {
-  const customerId = data.customerId;
-  if (!customerId) return;
+  const userId = await resolveUserId(data);
+  if (!userId) {
+    console.error('❌ subscription.canceled: не смог определить userId',
+      JSON.stringify({ custom_data: data.custom_data, customer_id: data.customer_id, id: data.id }));
+    return;
+  }
 
-  const userRef = admin.firestore().collection('users').doc(customerId);
-  await userRef.set({
+  await admin.firestore().collection('users').doc(userId).set({
     subscriptionStatus: 'inactive',
+    hasAccess: false,
+    canceledAt: data.canceled_at || new Date().toISOString(),
+    scheduledCancelAt: null,
     updatedAt: new Date().toISOString(),
   }, { merge: true });
 
-  console.log(`❌ Подписка отменена для пользователя ${customerId}`);
+  console.log(`❌ Подписка отменена для ${userId} (sub: ${data.id})`);
 }
 
 async function handleSubscriptionUpdated(data) {
-  // Например, изменилась дата оплаты или статус
-  const customerId = data.customerId;
-  const status = data.status; // 'active', 'past_due', 'canceled' и т.д.
-  if (!customerId) return;
+  const userId = await resolveUserId(data);
+  if (!userId) {
+    console.error('❌ subscription.updated: не смог определить userId',
+      JSON.stringify({ custom_data: data.custom_data, customer_id: data.customer_id, id: data.id }));
+    return;
+  }
 
-  const userRef = admin.firestore().collection('users').doc(customerId);
-  await userRef.set({
-    subscriptionStatus: status === 'active' ? 'active' : 'inactive',
+  // active | trialing | past_due | paused | canceled
+  const raw = data.status;
+  const status = (raw === 'active' || raw === 'trialing') ? 'active'
+               : (raw === 'past_due') ? 'past_due'
+               : (raw === 'paused') ? 'paused'
+               : 'inactive';
+
+  // отмена "в конце периода" прилетает именно сюда, а не в canceled
+  const sc = data.scheduled_change;
+
+  await admin.firestore().collection('users').doc(userId).set({
+    subscriptionStatus: status,
+    hasAccess: status === 'active' || status === 'past_due',
+    paddleSubscriptionId: data.id || null,
+    paddleCustomerId: data.customer_id || null,
+    expiresAt: data.next_billed_at || data.current_billing_period?.ends_at || null,
+    scheduledCancelAt: (sc && sc.action === 'cancel') ? sc.effective_at : null,
     updatedAt: new Date().toISOString(),
   }, { merge: true });
 
-  console.log(`🔄 Подписка обновлена для ${customerId}: ${status}`);
+  console.log(`🔄 Подписка обновлена для ${userId}: ${raw}`);
 }
 
 const server = http.createServer((req, res) => {
@@ -599,16 +619,33 @@ const server = http.createServer((req, res) => {
         const userId = decodedToken.uid;
   
         // Создаём транзакцию в Paddle
+        // const transaction = await paddle.transactions.create({
+        //   items: [{ priceId, quantity: 1 }],
+        //   //customerId: userId,
+        //   successUrl: 'https://pac111.onrender.com/success',  // замените на свой домен
+        //   cancelUrl: 'https://pac111.onrender.com/cancel',
+        // });
         const transaction = await paddle.transactions.create({
           items: [{ priceId, quantity: 1 }],
-          //customerId: userId,
-          successUrl: 'https://pac111.onrender.com/success',  // замените на свой домен
-          cancelUrl: 'https://pac111.onrender.com/cancel',
+          customData: { userId }, // <-- обязательно, иначе не свяжешь оплату с юзером
+          collectionMode: 'automatic',
+          checkout: { // <-- success/cancel должны быть ВНУТРИ checkout, а не на верхнем уровне
+            successUrl: 'https://pac111.onrender.com/success',
+            cancelUrl: 'https://pac111.onrender.com/cancel',
+          }
         });
-  
+        
+        console.log('DEBUG transaction:', JSON.stringify(transaction, null, 2));
+        
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        console.log('✅ Sending checkoutUrl to client:', transaction.checkoutUrl);
-        res.end(JSON.stringify({ checkoutUrl: transaction.checkoutUrl }));
+        res.end(JSON.stringify({ 
+          checkoutUrl: transaction.checkout.url, // <-- вот так
+          transactionId: transaction.id // <-- нужно для overlay-окна
+        }));
+  
+        // res.writeHead(200, { 'Content-Type': 'application/json' });
+        // console.log('✅ Sending checkoutUrl to client:', transaction.checkoutUrl);
+        // res.end(JSON.stringify({ checkoutUrl: transaction.checkoutUrl }));
       } catch (err) {
         console.error('❌ Ошибка создания чекаута:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
