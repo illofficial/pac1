@@ -38,29 +38,21 @@ async function verifyToken(req) {
   }
 }
 
+// ------ ЮKassa (прямые HTTP-запросы) ------
 async function createYooKassaPayment(amount, description, returnUrl, metadata) {
     const shopId = process.env.YOOKASSA_SHOP_ID;
     const secretKey = process.env.YOOKASSA_SECRET_KEY;
-
     if (!shopId || !secretKey) {
         throw new Error('YooKassa credentials not set');
     }
-
     const auth = Buffer.from(`${shopId}:${secretKey}`).toString('base64');
     const data = JSON.stringify({
-        amount: {
-            value: amount,
-            currency: 'RUB',
-        },
-        confirmation: {
-            type: 'redirect',
-            return_url: returnUrl,
-        },
+        amount: { value: amount, currency: 'RUB' },
+        confirmation: { type: 'redirect', return_url: returnUrl },
         capture: true,
-        description: description,
-        metadata: metadata,
+        description,
+        metadata,
     });
-
     const options = {
         hostname: 'api.yookassa.ru',
         path: '/v3/payments',
@@ -71,7 +63,6 @@ async function createYooKassaPayment(amount, description, returnUrl, metadata) {
             'Content-Length': Buffer.byteLength(data),
         },
     };
-
     return new Promise((resolve, reject) => {
         const req = https.request(options, (res) => {
             let body = '';
@@ -196,7 +187,7 @@ function fetchWithYoutubeMusicDownloader(videoId, res) {
 }
 
 const { v4: uuidv4 } = require('uuid');
-const YooKassa = require('@yookassa/sdk-node');
+//const YooKassa = require('@yookassa/sdk-node');
 
 const yooKassa = new YooKassa({
     shopId: process.env.YOOKASSA_SHOP_ID,
@@ -672,7 +663,6 @@ const server = http.createServer((req, res) => {
     req.on('end', async () => {
         try {
             const { amount, plan } = JSON.parse(Buffer.concat(body).toString());
-
             const authHeader = req.headers.authorization;
             if (!authHeader || !authHeader.startsWith('Bearer ')) {
                 throw new Error('Unauthorized');
@@ -697,7 +687,7 @@ const server = http.createServer((req, res) => {
         }
     });
     return;
-}
+  }
   
   // 4. Создание чекаута Paddle
   if (req.method === 'POST' && url.pathname === '/api/create-checkout') {
