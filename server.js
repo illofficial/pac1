@@ -587,6 +587,10 @@ const server = http.createServer((req, res) => {
     req.on('data', chunk => body.push(chunk));
     req.on('end', async () => {
       const rawBody = Buffer.concat(body);
+      // Логируем заголовок и секрет
+      console.log('🔍 Webhook signature header:', req.headers['paddle-signature']);
+      console.log('🔍 Webhook secret set?', !!process.env.PADDLE_WEBHOOK_SECRET);
+      console.log('🔍 Raw body length:', rawBody.length);
       try {
         // Проверяем подпись и парсим событие
         const eventData = await paddle.webhooks.unmarshal(
