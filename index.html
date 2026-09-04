@@ -2361,7 +2361,6 @@
   });
 
   paywallBtn.addEventListener('click', async () => {
-    paywallBtn.addEventListener('click', async () => {
     if (!selectedPlan) {
         alert('Please select a plan first.');
         return;
@@ -2370,99 +2369,99 @@
     // Определяем, какой провайдер использовать
     const useYooKassa = await shouldUseYooKassa();
 
-      if (useYooKassa) {
-          // --- Российский пользователь → ЮKassa ---
-          try {
-              const token = await window.getFirebaseToken();
-              if (!token) {
-                  showLoginScreen();
-                  return;
-              }
-  
-              // Маппинг планов на цены для ЮKassa (в рублях)
-              const priceMapRub = {
-                  'weekly': '500',   // например, 500 руб/неделя
-                  'yearly': '3000',  // 3000 руб/год
-                  'lifetime': '6000' // 6000 руб (единоразово)
-              };
-              const amount = priceMapRub[selectedPlan];
-              if (!amount) {
-                  alert('Invalid plan selected.');
-                  return;
-              }
-  
-              const response = await fetch('/api/create-yookassa-payment', {
-                  method: 'POST',
-                  headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${token}`,
-                  },
-                  body: JSON.stringify({ plan: selectedPlan, amount }),
-              });
-  
-              const data = await response.json();
-              if (data.confirmationUrl) {
-                  window.location.href = data.confirmationUrl;
-              } else {
-                  alert('Ошибка: ' + (data.error || 'не удалось создать платёж'));
-              }
-          } catch (err) {
-              console.error('❌ Ошибка оплаты через ЮKassa:', err);
-              alert('Не удалось начать оплату. Попробуйте позже.');
-          }
-      } else {
-        if (!selectedPlan) {
-          alert('Please select a plan first.');
-          return;
-        }
-      
-        const priceMap = {
-          'weekly': 'pri_01m19tj9f3e1xgb1qhs5ayn18f',
-          'yearly': 'pri_01m19tk7zz8j4q4fg8f8fybjkb',
-          'lifetime': 'pri_01m19tmdjaay21rqyatcnbjma5'
-        };
-      
-        const priceId = priceMap[selectedPlan];
-        if (!priceId) {
-          alert('Invalid plan selected.');
-          return;
-        }
-      
+    if (useYooKassa) {
+        // --- Российский пользователь → ЮKassa ---
         try {
-          const token = await window.getFirebaseToken();
-          if (!token) {
-            showLoginScreen();
-            return;
-          }
-      
-          const response = await fetch('/api/create-checkout', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ priceId })
-          });
-      
-          const data = await response.json();
-          console.log('Ответ сервера:', data);
-      
-          if (data.checkoutUrl) {
-            // ✅ Открываем оплату в новой вкладке (обходит блокировку попапов)
-            //window.open(data.checkout.url, '_blank');
-            // Или для перехода в текущей вкладке:
-            // window.location.href = data.checkoutUrl;
-            Paddle.Checkout.open({
-              transactionId: data.transactionId,
+            const token = await window.getFirebaseToken();
+            if (!token) {
+                showLoginScreen();
+                return;
+            }
+
+            // Маппинг планов на цены для ЮKassa (в рублях)
+            const priceMapRub = {
+                'weekly': '500',   // например, 500 руб/неделя
+                'yearly': '3000',  // 3000 руб/год
+                'lifetime': '6000' // 6000 руб (единоразово)
+            };
+            const amount = priceMapRub[selectedPlan];
+            if (!amount) {
+                alert('Invalid plan selected.');
+                return;
+            }
+
+            const response = await fetch('/api/create-yookassa-payment', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                },
+                body: JSON.stringify({ plan: selectedPlan, amount }),
             });
-          } else {
-            alert('Ошибка: ' + (data.error || 'не удалось создать платёжную ссылку'));
-          }
+
+            const data = await response.json();
+            if (data.confirmationUrl) {
+                window.location.href = data.confirmationUrl;
+            } else {
+                alert('Ошибка: ' + (data.error || 'не удалось создать платёж'));
+            }
         } catch (err) {
-          console.error('❌ Ошибка оплаты:', err);
-          alert('Failed to start payment: ' + err.message);
+            console.error('❌ Ошибка оплаты через ЮKassa:', err);
+            alert('Не удалось начать оплату. Попробуйте позже.');
         }
+    } else {
+      if (!selectedPlan) {
+        alert('Please select a plan first.');
+        return;
       }
+    
+      const priceMap = {
+        'weekly': 'pri_01m19tj9f3e1xgb1qhs5ayn18f',
+        'yearly': 'pri_01m19tk7zz8j4q4fg8f8fybjkb',
+        'lifetime': 'pri_01m19tmdjaay21rqyatcnbjma5'
+      };
+    
+      const priceId = priceMap[selectedPlan];
+      if (!priceId) {
+        alert('Invalid plan selected.');
+        return;
+      }
+    
+      try {
+        const token = await window.getFirebaseToken();
+        if (!token) {
+          showLoginScreen();
+          return;
+        }
+    
+        const response = await fetch('/api/create-checkout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ priceId })
+        });
+    
+        const data = await response.json();
+        console.log('Ответ сервера:', data);
+    
+        if (data.checkoutUrl) {
+          // ✅ Открываем оплату в новой вкладке (обходит блокировку попапов)
+          //window.open(data.checkout.url, '_blank');
+          // Или для перехода в текущей вкладке:
+          // window.location.href = data.checkoutUrl;
+          Paddle.Checkout.open({
+            transactionId: data.transactionId,
+          });
+        } else {
+          alert('Ошибка: ' + (data.error || 'не удалось создать платёжную ссылку'));
+        }
+      } catch (err) {
+        console.error('❌ Ошибка оплаты:', err);
+        alert('Failed to start payment: ' + err.message);
+      }
+    }
   });
 
   planList.addEventListener('click', (e) => {
@@ -2924,19 +2923,6 @@
       return;
     }
     
-    // Usage gate: check trials before processing
-    // const usage = resetWeeklyIfNeeded(getUsage());
-    // const left = getRemaining(usage);
-    // //const left = trialsLeft(u);
-    // if (left <= 0) {
-    //   if (usage.loggedIn) {
-    //     showPaywallScreen();
-    //   } else {
-    //     showLoginScreen();
-    //   }
-    //   return;
-    // }
-
     revokeAll();
     showScreen('loading');
     setProgress(0);
@@ -3157,6 +3143,7 @@ if (currentPath === '/success') {
 }
 
 </script>
+  
 <div id="user-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 999; justify-content: center; align-items: center;">
   <div style="background: #111; border: 3px solid var(--wall); padding: 30px 24px; max-width: 400px; width: 90%; border-radius: 8px; box-shadow: 0 0 30px rgba(33,33,255,0.5);">
     <h2 style="color: var(--yellow); font-family: var(--font-display); font-size: 18px; text-align: center;">Account Details</h2>
