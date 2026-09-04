@@ -587,134 +587,191 @@ const server = http.createServer((req, res) => {
     req.on('data', chunk => body.push(chunk));
     req.on('end', async () => {
       const rawBody = Buffer.concat(body);
-      // Логируем заголовок и секрет
-      console.log('🔍 Webhook signature header:', req.headers['paddle-signature']);
-      console.log('🔍 Webhook secret set?', !!process.env.PADDLE_WEBHOOK_SECRET);
-      console.log('🔍 Raw body length:', rawBody.length);
+      const rawBodyString = rawBody.toString('utf8');
+  
+      const signatureHeader = req.headers['paddle-signature'];
+      if (!signatureHeader) {
+        console.error('❌ Missing paddle-signature header');
+        res.writeHead(400);
+        res.end('Missing signature');
+        return;
+      }
+  
+      // Парсим заголовок: "ts=...;h1=..."
+      const parts = signatureHeader.split(';');
+      let timestamp = null;
+      let signature = null;
+      for (const part of parts) {
+        const [key, value] = part.split('=');
+        if (key === 'ts') timestamp = value;
+        if (key === 'h1') signature = value;
+      }
+  
+      if (!timestamp || !signature) {
+        console.error('❌ Invalid signature header format');
+        res.writeHead(400);
+        res.end('Invalid signature format');
+        return;
+      }
+  
+      // Проверяем, что timestamp не старше 5 минут (защита от replay)
+      const now = Math.floor(Date.now() / 1000);
+      if (Math.abs(now - parseInt(timestamp)) > 300) {
+        console.error('❌ Timestamp too old or in future');
+        res.writeHead(400);
+        res.end('Invalid timestamp');
+        return;
+      }
+  
+      const secret = process.env.PADDLE_WEBHOOK_SECRET;
+      if (!secret) {
+        console.error('❌ PADDLE_WEBHOOK_SECRET not set');
+        res.writeHead(500);
+        res.end('Webhook secret not configured');
+        return;
+      }
+  
+      // Вычисляем ожидаемую подпись
+      const crypto = require('crypto');
+      const expectedSignature = crypto
+        .createHmac('sha256', secret)
+        .update(`${timestamp}:${secret}:${rawBodyString}`)
+        .digest('hex');
+  
+      // Сравниваем подписи (защита от timing attack)
+      const isValid = crypto.timingSafeEqual(
+        Buffer.from(signature, 'hex'),
+        Buffer.from(expectedSignature, 'hex')
+      );
+  
+      if (!isValid) {
+        console.error('❌ Invalid webhook signature');
+        res.writeHead(400);
+        res.end('Invalid signature');
+        return;
+      }
+  
+      console.log('✅ Webhook signature verified successfully');
+  
       try {
-        // Проверяем подпись и парсим событие
-        const eventData = await paddle.webhooks.unmarshal(
-          rawBody,
-          req.headers['paddle-signature'],
-          process.env.PADDLE_WEBHOOK_SECRET
-        );
-
-        console.log('🔔 Получен вебхук:', eventData.eventType);
-
-        // Обработка событий
-        switch (eventData.eventType) {
+        // Парсим событие
+        const event = JSON.parse(rawBodyString);
+        console.log(`✅ Webhook event type: ${event.event_type}`);
+  
+        // Обработка событий (аналогично предыдущему)
+        switch (event.event_type) {
           case 'transaction.completed':
-            await handleTransactionCompleted(eventData.data);
+            await handleTransactionCompleted(event.data);
             break;
           case 'subscription.canceled':
-            await handleSubscriptionCanceled(eventData.data);
+            await handleSubscriptionCanceled(event.data);
             break;
           case 'subscription.updated':
-            await handleSubscriptionUpdated(eventData.data);
+            await handleSubscriptionUpdated(event.data);
             break;
           default:
-            console.log(`ℹ️ Необработанный тип: ${eventData.eventType}`);
+            console.log(`ℹ️ Unhandled event type: ${event.event_type}`);
         }
-
+  
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok' }));
       } catch (err) {
-        console.error('❌ Ошибка вебхука:', err);
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: err.message }));
+        console.error('❌ Error processing webhook event:', err);
+        res.writeHead(400);
+        res.end('Error processing event');
       }
     });
-    return; // важно: не идти к serveFile
+    return;
   }
 
   // ----- Прокси для video-download-api.com -----
-if (req.method === 'GET' && url.pathname === '/api/video-download') {
-  const videoUrl = url.searchParams.get('url');
-  const format = url.searchParams.get('format') || 'mp3';
-
-  if (!videoUrl) {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Missing "url" parameter' }));
-    return;
-  }
-
-  // Ваш API-ключ (добавьте в переменные окружения на Render)
-  const API_KEY = process.env.VIDEO_DOWNLOAD_API_KEY;
-  if (!API_KEY) {
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'API key not configured' }));
-    return;
-  }
-
-  const apiParams = new URLSearchParams({
-    url: videoUrl,
-    format: format,
-    apikey: API_KEY,
-    add_info: '1',
-    allow_extended_duration: '1',
-    no_merge: '0'
-  });
-
-  const apiUrl = `https://p.savenow.to/ajax/download.php?${apiParams}`;
-
-  https.get(apiUrl, (apiRes) => {
-    let data = '';
-    apiRes.on('data', chunk => data += chunk);
-    apiRes.on('end', () => {
-      try {
-        const json = JSON.parse(data);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          jobId: json.id,
-          progressUrl: `https://p.savenow.to/ajax/progress.php?id=${json.id}`
-        }));
-      } catch (e) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Invalid API response' }));
-      }
+  if (req.method === 'GET' && url.pathname === '/api/video-download') {
+    const videoUrl = url.searchParams.get('url');
+    const format = url.searchParams.get('format') || 'mp3';
+  
+    if (!videoUrl) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Missing "url" parameter' }));
+      return;
+    }
+  
+    // Ваш API-ключ (добавьте в переменные окружения на Render)
+    const API_KEY = process.env.VIDEO_DOWNLOAD_API_KEY;
+    if (!API_KEY) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'API key not configured' }));
+      return;
+    }
+  
+    const apiParams = new URLSearchParams({
+      url: videoUrl,
+      format: format,
+      apikey: API_KEY,
+      add_info: '1',
+      allow_extended_duration: '1',
+      no_merge: '0'
     });
-  }).on('error', (err) => {
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: err.message }));
-  });
-  return;
-}
-
-// ----- Статус для video-download-api -----
-if (req.method === 'GET' && url.pathname === '/api/video-download-status') {
-  const jobId = url.searchParams.get('id');
-
-  if (!jobId) {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Missing "id" parameter' }));
+  
+    const apiUrl = `https://p.savenow.to/ajax/download.php?${apiParams}`;
+  
+    https.get(apiUrl, (apiRes) => {
+      let data = '';
+      apiRes.on('data', chunk => data += chunk);
+      apiRes.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            jobId: json.id,
+            progressUrl: `https://p.savenow.to/ajax/progress.php?id=${json.id}`
+          }));
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid API response' }));
+        }
+      });
+    }).on('error', (err) => {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    });
     return;
   }
 
-  const apiUrl = `https://p.savenow.to/ajax/progress.php?id=${jobId}`;
-
-  https.get(apiUrl, (apiRes) => {
-    let data = '';
-    apiRes.on('data', chunk => data += chunk);
-    apiRes.on('end', () => {
-      try {
-        const json = JSON.parse(data);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          progress: json.progress,
-          downloadUrl: json.download_url || null,
-          status: json.progress === 1000 ? 'completed' : 'processing'
-        }));
-      } catch (e) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Invalid API response' }));
-      }
+  // ----- Статус для video-download-api -----
+  if (req.method === 'GET' && url.pathname === '/api/video-download-status') {
+    const jobId = url.searchParams.get('id');
+  
+    if (!jobId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Missing "id" parameter' }));
+      return;
+    }
+  
+    const apiUrl = `https://p.savenow.to/ajax/progress.php?id=${jobId}`;
+  
+    https.get(apiUrl, (apiRes) => {
+      let data = '';
+      apiRes.on('data', chunk => data += chunk);
+      apiRes.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            progress: json.progress,
+            downloadUrl: json.download_url || null,
+            status: json.progress === 1000 ? 'completed' : 'processing'
+          }));
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid API response' }));
+        }
+      });
+    }).on('error', (err) => {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
     });
-  }).on('error', (err) => {
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: err.message }));
-  });
-  return;
-}
+    return;
+  }
   
   // 4. Создание чекаута Paddle
   if (req.method === 'POST' && url.pathname === '/api/create-checkout') {
