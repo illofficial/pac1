@@ -842,17 +842,22 @@
     }
   };
 
-  window.addEventListener('load', () => {
+  window.addEventListener('load', async () => {
     if (!window.Paddle) {
       console.error('Paddle.js не загрузился');
       return;
     }
   
-    Paddle.Initialize({
-      token: 'pdl_live_apikey_01m1a04c5w9952c3g79aekk0nj_fCKjcQAgT029yCRhWWfAXF_AjD',
-    });
-  
-    console.log('✅ Paddle initialized');
+    try {
+      const response = await fetch('/api/paddle-token');
+      if (!response.ok) throw new Error('Failed to fetch token');
+      const { token } = await response.json();
+      
+      Paddle.Initialize({ token });
+      console.log('✅ Paddle initialized with client token');
+    } catch (err) {
+      console.error('❌ Paddle init failed:', err);
+    }
   });
   
   // Функция проверки подписки (принимает объект user)
