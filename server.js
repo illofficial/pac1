@@ -700,6 +700,10 @@ const server = http.createServer((req, res) => {
   
         // Обработка событий
         switch (event.event_type) {
+          case 'transaction.created':
+            // Просто логируем (опционально)
+            console.log(`ℹ️ Transaction created: ${event.data.id}`);
+            break;
           case 'transaction.completed':
             await handleTransactionCompleted(event.data);
             break;
