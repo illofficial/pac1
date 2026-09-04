@@ -858,7 +858,7 @@ const server = http.createServer((req, res) => {
       }
   
       // ✅ Правильная формула: HMAC-SHA256(secret, timestamp + ":" + requestBody)
-      const crypto = require('crypto');
+      //const crypto = require('crypto');
       const hmac = crypto.createHmac('sha256', secret);
       hmac.update(`${timestamp}:${rawBodyString}`);
       const expectedSignature = hmac.digest('hex');
