@@ -2196,7 +2196,7 @@
     screens[name].classList.add('active');
   
     if (name === 'input') {
-      const u = window.resetWeeklyIfNeededSafe(window.getUsageSafe());
+      const u = window.resetWeeklyIfNeeded(window.getUsage());
       const remaining = window.getRemaining(u);
       const limit = FREE_LIMIT; // должно быть определено как 4
       const el = document.getElementById('trials-remaining');
@@ -3284,65 +3284,44 @@ if (currentPath === '/success') {
     }
   });
 
-  function getUsageSafe() {
-    if (typeof window.getUsage === 'function') {
-        return window.getUsage();
-    }
-    // Fallback: читаем localStorage напрямую
+  function getUsage() {
     try {
-        const raw = localStorage.getItem('pac1_usage');
-        if (!raw) return { weekStart: '', used: 0, loggedIn: false };
-        return JSON.parse(raw);
+      const raw = localStorage.getItem('pac1_usage');
+      if (!raw) return { weekStart: '', used: 0, loggedIn: false };
+      return JSON.parse(raw);
     } catch {
-        return { weekStart: '', used: 0, loggedIn: false };
+      return { weekStart: '', used: 0, loggedIn: false };
     }
   }
-
-  function saveUsageSafe(u) {
-      if (typeof window.saveUsage === 'function') {
-          window.saveUsage(u);
-          return;
-      }
-      // Fallback: пишем в localStorage напрямую
-      try {
-          localStorage.setItem('pac1_usage', JSON.stringify(u));
-      } catch (e) {
-          console.error('Failed to save usage:', e);
-      }
+  
+  function saveUsage(u) {
+    try {
+      localStorage.setItem('pac1_usage', JSON.stringify(u));
+    } catch (e) {
+      console.error('Failed to save usage:', e);
+    }
   }
   
-  function resetWeeklyIfNeededSafe(u) {
-      if (typeof window.resetWeeklyIfNeeded === 'function') {
-          return window.resetWeeklyIfNeeded(u);
-      }
-      // Fallback: простая логика сброса
-      const now = new Date();
-      const weekStart = u.weekStart ? new Date(u.weekStart) : null;
-      if (!weekStart || (now - weekStart) >= 7 * 24 * 60 * 60 * 1000) {
-          u.weekStart = now.toISOString();
-          u.used = 0;
-      }
-      return u;
+  function resetWeeklyIfNeeded(u) {
+    const now = new Date();
+    const weekStart = u.weekStart ? new Date(u.weekStart) : null;
+    if (!weekStart || (now - weekStart) >= 7 * 24 * 60 * 60 * 1000) {
+      u.weekStart = now.toISOString();
+      u.used = 0;
+    }
+    return u;
   }
   
-  function getRemainingSafe(u) {
-      if (typeof window.getRemaining === 'function') {
-          return window.getRemaining(u);
-      }
-      // Fallback
-      u = resetWeeklyIfNeededSafe(u);
-      return Math.max(0, 4 - (u.used || 0));
+  function getRemaining(u) {
+    u = resetWeeklyIfNeeded(u);
+    return Math.max(0, 4 - (u.used || 0));
   }
   
-  function bumpUsageSafe() {
-      if (typeof window.bumpUsage === 'function') {
-          return window.bumpUsage();
-      }
-      // Fallback
-      let u = resetWeeklyIfNeededSafe(getUsageSafe());
-      u.used = (u.used || 0) + 1;
-      window.saveUsage(u);
-      return true;
+  function bumpUsage() {
+    let u = resetWeeklyIfNeeded(getUsage());
+    u.used = (u.used || 0) + 1;
+    saveUsage(u);
+    return true;
   }
   
   // Функция проверки подписки (принимает объект user)
@@ -3465,15 +3444,15 @@ if (currentPath === '/success') {
       modalSubscription.textContent = hasSubscription ? (sub.plan || 'Active') : 'Free';
       modalExpires.textContent = sub.expiresAt || '—';
 
-      // Безопасное получение usage
-      function getUsageSafe() {
-          if (typeof window.getUsage === 'function') {
-              return window.getUsageSafe();
-          }
-          // Fallback, если основной скрипт ещё не загрузился
-          console.warn('window.getUsage not ready, using fallback');
-          return { weekStart: '', used: 0, loggedIn: false };
-      }
+      // // Безопасное получение usage
+      // function getUsageSafe() {
+      //     if (typeof window.getUsage === 'function') {
+      //         return window.getUsageSafe();
+      //     }
+      //     // Fallback, если основной скрипт ещё не загрузился
+      //     console.warn('window.getUsage not ready, using fallback');
+      //     return { weekStart: '', used: 0, loggedIn: false };
+      // }
       
       // Теперь используем её
       let u = window.resetWeeklyIfNeeded 
