@@ -984,7 +984,22 @@
       modalSubscription.textContent = hasSubscription ? (sub.plan || 'Active') : 'Free';
       modalExpires.textContent = sub.expiresAt || '—';
 
-      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
+      // Безопасное получение usage
+      function getUsageSafe() {
+          if (typeof window.getUsage === 'function') {
+              return window.getUsage();
+          }
+          // Fallback, если основной скрипт ещё не загрузился
+          console.warn('window.getUsage not ready, using fallback');
+          return { weekStart: '', used: 0, loggedIn: false };
+      }
+      
+      // Теперь используем её
+      let u = window.resetWeeklyIfNeeded 
+          ? window.resetWeeklyIfNeeded(getUsageSafe()) 
+          : getUsageSafe();
+      
+      //let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
       u.loggedIn = true;
       window.saveUsage(u);
 
