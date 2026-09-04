@@ -4,7 +4,7 @@
   "dependencies": {
     "firebase-admin": "^12.0.0",
     "@paddle/paddle-node-sdk": "^1.3.0",
-    "yookassa": "^2.0.0"
+    "yookassa": "^1.0.0"
   }
 }
 
