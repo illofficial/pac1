@@ -2643,11 +2643,14 @@
       const data = await response.json();
       console.log('Ответ сервера:', data);
   
-      if (data.checkoutUrl) {
+      if (data.checkout.url) {
         // ✅ Открываем оплату в новой вкладке (обходит блокировку попапов)
-        window.open(data.checkoutUrl, '_blank');
+        //window.open(data.checkout.url, '_blank');
         // Или для перехода в текущей вкладке:
         // window.location.href = data.checkoutUrl;
+        Paddle.Checkout.open({
+          transactionId: data.transactionId,
+        });
       } else {
         alert('Ошибка: ' + (data.error || 'не удалось создать платёжную ссылку'));
       }
