@@ -2625,23 +2625,16 @@
         },
         body: JSON.stringify({ priceId })
       });
-  
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create checkout');
-      }
-
+      
       const data = await response.json();
-      console.log('Ответ сервера:', data); // <-- добавить для отладки
+      console.log('Ответ сервера:', data); // 👈 важно для отладки
       
       if (data.checkoutUrl) {
-        // ✅ Открываем оплату
+        // ✅ Правильно: используем data.checkoutUrl
         window.location.href = data.checkoutUrl;
         // Или для новой вкладки: window.open(data.checkoutUrl, '_blank');
       } else {
-        // ❌ Если checkoutUrl отсутствует – показываем ошибку
-        alert('Ошибка: не удалось создать платёжную ссылку');
-        console.error('Ответ без checkoutUrl:', data);
+        alert('Ошибка: ' + (data.error || 'не удалось создать платёжную ссылку'));
       }
       
       // const data = await response.json();
