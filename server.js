@@ -736,48 +736,61 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && url.pathname === '/api/create-yookassa-payment') {
-      let body = [];
-      req.on('data', chunk => body.push(chunk));
-      req.on('end', async () => {
-          try {
-              const { amount, plan } = JSON.parse(Buffer.concat(body).toString());
-  
-              // Проверяем токен пользователя
-              const authHeader = req.headers.authorization;
-              if (!authHeader || !authHeader.startsWith('Bearer ')) {
-                  throw new Error('Unauthorized');
-              }
-              const idToken = authHeader.split('Bearer ')[1];
-              const decodedToken = await admin.auth().verifyIdToken(idToken);
-              const userId = decodedToken.uid;
-  
-              const payment = await yooKassa.createPayment({
-                  amount: {
-                      value: amount,
-                      currency: 'RUB',
-                  },
-                  confirmation: {
-                      type: 'redirect',
-                      return_url: 'https://pac111.onrender.com/success', // после оплаты
-                  },
-                  capture: true,
-                  description: `Premium Audio Converter - ${plan} plan`,
-                  metadata: {
-                      userId: userId,
-                      plan: plan,
-                  },
-              });
-  
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ confirmationUrl: payment.confirmation.confirmation_url }));
-          } catch (err) {
-              console.error('❌ Ошибка создания платежа ЮKassa:', err);
-              res.writeHead(500);
-              res.end(JSON.stringify({ error: err.message }));
-          }
-      });
-      return;
+  async function createYooKassaPayment(amount, description, returnUrl, metadata) {
+    const shopId = process.env.YOOKASSA_SHOP_ID;
+    const secretKey = process.env.YOOKASSA_SECRET_KEY;
+
+    if (!shopId || !secretKey) {
+        throw new Error('YooKassa credentials not set');
+    }
+
+    const auth = Buffer.from(`${shopId}:${secretKey}`).toString('base64');
+    const data = JSON.stringify({
+        amount: {
+            value: amount,
+            currency: 'RUB',
+        },
+        confirmation: {
+            type: 'redirect',
+            return_url: returnUrl,
+        },
+        capture: true,
+        description: description,
+        metadata: metadata,
+    });
+
+    const options = {
+        hostname: 'api.yookassa.ru',
+        path: '/v3/payments',
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Basic ${auth}`,
+            'Content-Length': Buffer.byteLength(data),
+        },
+    };
+
+    return new Promise((resolve, reject) => {
+        const req = https.request(options, (res) => {
+            let body = '';
+            res.on('data', chunk => body += chunk);
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(body);
+                    if (json.error) {
+                        reject(new Error(json.error.description || 'YooKassa error'));
+                    } else {
+                        resolve(json);
+                    }
+                } catch (err) {
+                    reject(err);
+                }
+            });
+        });
+        req.on('error', reject);
+        req.write(data);
+        req.end();
+    });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/yookassa-webhook') {
