@@ -2256,6 +2256,7 @@
   window.getRemaining = getRemaining;
   window.bumpUsage = bumpUsage;
   
+  
   // ---------------- login / paywall UI ----------------
   const loginEmail = document.getElementById('login-email');
   const loginPassword = document.getElementById('login-password');
@@ -3354,6 +3355,7 @@ if (currentPath === '/success') {
             return false;
         }
     }
+    window.shouldUseYooKassa = shouldUseYooKassa;
 
     const uid = user.uid;
     const email = user.email || '';
