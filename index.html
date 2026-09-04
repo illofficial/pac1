@@ -2597,9 +2597,8 @@
       return;
     }
   
-    // Маппинг планов на priceId из Paddle
     const priceMap = {
-      'weekly': 'pri_01m19tj9f3e1xgb1qhs5ayn18f', 
+      'weekly': 'pri_01m19tj9f3e1xgb1qhs5ayn18f',
       'yearly': 'pri_01m19tk7zz8j4q4fg8f8fybjkb',
       'lifetime': 'pri_01m19tmdjaay21rqyatcnbjma5'
     };
@@ -2616,7 +2615,7 @@
         showLoginScreen();
         return;
       }
-      
+  
       const response = await fetch('/api/create-checkout', {
         method: 'POST',
         headers: {
@@ -2625,31 +2624,18 @@
         },
         body: JSON.stringify({ priceId })
       });
-      
+  
       const data = await response.json();
-      console.log('Ответ сервера:', data); // 👈 важно для отладки
-      
+      console.log('Ответ сервера:', data);
+  
       if (data.checkoutUrl) {
-        // ✅ Правильно: используем data.checkoutUrl
-        // window.location.href = data.checkoutUrl;
+        // ✅ Открываем оплату в новой вкладке (обходит блокировку попапов)
         window.open(data.checkoutUrl, '_blank');
+        // Или для перехода в текущей вкладке:
+        // window.location.href = data.checkoutUrl;
       } else {
         alert('Ошибка: ' + (data.error || 'не удалось создать платёжную ссылку'));
       }
-      
-      // const data = await response.json();
-      // if (data.checkoutUrl) {
-      //   // Открыть в новой вкладке (обходит некоторые блокировки)
-      //   window.open(data.checkoutUrl, '_blank');
-      //   // или перенаправить текущую вкладку
-      //   // window.location.href = data.checkoutUrl;
-      // } else {
-      //   alert('Ошибка: не удалось создать платёжную ссылку');
-      // }
-  
-      //const { checkoutUrl } = await response.json();
-      // Перенаправляем на страницу оплаты Paddle
-      window.location.href = data.checkoutUrl;
     } catch (err) {
       console.error('❌ Ошибка оплаты:', err);
       alert('Failed to start payment: ' + err.message);
