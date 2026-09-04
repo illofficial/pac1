@@ -815,7 +815,7 @@
       localStorage.removeItem('firebaseToken');
       let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeededSafe(window.getUsageSafe()) : window.getUsageSafe();
       u.loggedIn = false;
-      window.saveUsage(u);
+      window.saveUsageSafe(u);
       document.getElementById('user-modal').classList.remove('visible');
       window.showScreen('input');
     } catch (err) {
@@ -834,7 +834,7 @@
       localStorage.removeItem('firebaseToken');
       let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeededSafe(window.getUsageSafe()) : window.getUsageSafe();
       u.loggedIn = false;
-      window.saveUsage(u);
+      window.saveUsageSafe(u);
       document.getElementById('user-modal').classList.remove('visible');
       window.showScreen('input');
     } catch (err) {
@@ -1062,7 +1062,7 @@
       
       //let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeededSafe(window.getUsageSafe()) : window.getUsageSafe();
       u.loggedIn = true;
-      window.saveUsage(u);
+      window.saveUsageSafe(u);
 
       updateUIForSubscription(hasSubscription);
 
@@ -1083,7 +1083,7 @@
 
       let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeededSafe(window.getUsageSafe()) : window.getUsageSafe();
       u.loggedIn = false;
-      window.saveUsage(u);
+      window.saveUsageSafe(u);
 
       const trialsContainer = document.getElementById('trials-remaining')?.closest('.remaining-hint');
       if (trialsContainer) trialsContainer.style.display = 'block';
@@ -2563,7 +2563,7 @@
   
     if (name === 'input') {
       const u = window.resetWeeklyIfNeededSafe(window.getUsageSafe());
-      const remaining = window.getRemaining(u);
+      const remaining = window.getRemainingSafe(u);
       const limit = FREE_LIMIT; // должно быть определено как 4
       const el = document.getElementById('trials-remaining');
       if (el) el.textContent = remaining;
@@ -2612,7 +2612,7 @@
   function bumpUsage() {
     let u = window.resetWeeklyIfNeededSafe(window.getUsageSafe());
     u.used = (u.used || 0) + 1;
-    window.saveUsage(u);
+    window.saveUsageSafe(u);
     return true;
   }
 
@@ -2640,7 +2640,7 @@
 
   function showLoginScreen(){
     let u = resetWeeklyIfNeededSafe(getUsageSafe());
-    const left = getRemaining(u);
+    const left = getRemainingSafe(u);
     loginTrialsHint.innerHTML = 'You have <b>' + left + '</b> conversion' + (left !== 1 ? 's' : '') + ' left today.';
     loginError.classList.remove('show');
     loginEmail.value = '';
@@ -2655,7 +2655,7 @@
 
   function showPaywallScreen(){
     let u = resetWeeklyIfNeededSafe(getUsageSafe());
-    const left = getRemaining(u);
+    const left = getRemainingSafe(u);
     paywallTrialsHint.innerHTML = 'You have <b>' + left + '</b> conversion' + (left !== 1 ? 's' : '') + ' left today.';
     selectedPlan = null;
     paywallBtn.disabled = true;
@@ -2695,7 +2695,7 @@
       // Обновляем usage
       let u = resetWeeklyIfNeededSafe(getUsageSafe());
       u.loggedIn = true;
-      saveUsage(u);
+      saveUsageSafe(u);
       loginError.classList.remove('show');
       // Показываем экран ввода
       showScreen('input');
@@ -2711,7 +2711,7 @@
     localStorage.removeItem('firebaseToken');
     let u = resetWeeklyIfNeededSafe(getUsageSafe());
     u.loggedIn = false;
-    saveUsage(u);
+    saveUsageSafe(u);
     showScreen('input');
   }
 
@@ -3262,7 +3262,7 @@
     }
   
     if (!hasSubscription) {
-      const remaining = getRemaining(u);
+      const remaining = getRemainingSafe(u);
       if (remaining <= 0) {
         // Если нет остатка – показываем paywall или логин
         if (u.loggedIn) {
@@ -3445,7 +3445,7 @@
 
       setTimeout(() => showScreen('win'), 450);
 
-      bumpUsage(); // count this conversion toward daily limit
+      bumpUsageSafe(); // count this conversion toward daily limit
 
     } catch(err){
       console.error(err);
