@@ -189,10 +189,10 @@ function fetchWithYoutubeMusicDownloader(videoId, res) {
 const { v4: uuidv4 } = require('uuid');
 //const YooKassa = require('@yookassa/sdk-node');
 
-const yooKassa = new YooKassa({
-    shopId: process.env.YOOKASSA_SHOP_ID,
-    secretKey: process.env.YOOKASSA_SECRET_KEY,
-});
+// const yooKassa = new YooKassa({
+//     shopId: process.env.YOOKASSA_SHOP_ID,
+//     secretKey: process.env.YOOKASSA_SECRET_KEY,
+// });
 
 // --- Новая функция для скачивания через Tornado API ---
 async function fetchAudioViaTornadoApi(videoId, res) {
