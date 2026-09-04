@@ -80,14 +80,16 @@ async function createYooKassaPayment(amount, description, returnUrl, metadata) {
             res.on('end', () => {
                 try {
                     const json = JSON.parse(body);
-                    // Если есть поле error — значит ошибка
-                    if (json.error) {
-                        reject(new Error(json.error.description || 'YooKassa error'));
+                    // Проверяем статус ответа
+                    if (res.statusCode >= 400) {
+                        // Ищем текст ошибки
+                        const errorMsg = json.error?.description || json.description || `HTTP ${res.statusCode}: ${body}`;
+                        reject(new Error(errorMsg));
                     } else {
                         resolve(json);
                     }
                 } catch (err) {
-                    reject(err);
+                    reject(new Error(`Failed to parse YooKassa response: ${body}`));
                 }
             });
         });
@@ -672,46 +674,44 @@ const server = http.createServer((req, res) => {
     let body = [];
     req.on('data', chunk => body.push(chunk));
     req.on('end', async () => {
-      try {
-        const { amount, plan } = JSON.parse(Buffer.concat(body).toString());
-  
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-          throw new Error('Unauthorized');
+        try {
+            const { amount, plan } = JSON.parse(Buffer.concat(body).toString());
+
+            const authHeader = req.headers.authorization;
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                throw new Error('Unauthorized');
+            }
+            const idToken = authHeader.split('Bearer ')[1];
+            const decodedToken = await admin.auth().verifyIdToken(idToken);
+            const userId = decodedToken.uid;
+
+            const payment = await createYooKassaPayment(
+                amount,
+                `Premium Audio Converter - ${plan}`,
+                'https://pac111.onrender.com/success',
+                { userId, plan }
+            );
+
+            // Логируем полный ответ для отладки
+            console.log('📦 Полный ответ от ЮKassa:', JSON.stringify(payment, null, 2));
+
+            if (!payment.confirmation || !payment.confirmation.confirmation_url) {
+                // Если нет confirmation_url, выводим информацию из ответа
+                const errorMsg = payment.error?.description || payment.description || 'Неизвестная ошибка ЮKassa';
+                throw new Error(errorMsg);
+            }
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ confirmationUrl: payment.confirmation.confirmation_url }));
+        } catch (err) {
+            console.error('❌ Ошибка создания платежа ЮKassa:', err);
+            if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err.message }));
+            } else {
+                res.end();
+            }
         }
-        const idToken = authHeader.split('Bearer ')[1];
-        const decodedToken = await admin.auth().verifyIdToken(idToken);
-        const userId = decodedToken.uid;
-  
-        // Создаём платёж через функцию createYooKassaPayment (прямой HTTP-запрос)
-        // Убедитесь, что эта функция определена и возвращает корректный объект.
-        const payment = await createYooKassaPayment(
-          amount,
-          `Premium Audio Converter - ${plan}`,
-          'https://pac111.onrender.com/success',
-          { userId, plan }
-        );
-  
-        // Проверяем, что платеж создан и есть confirmation_url
-        if (!payment.confirmation || !payment.confirmation.confirmation_url) {
-          // Если нет — значит, ЮKassa вернул ошибку (например, неверные реквизиты)
-          const errorMsg = payment.error?.description || 'Неизвестная ошибка ЮKassa';
-          throw new Error(errorMsg);
-        }
-  
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ confirmationUrl: payment.confirmation.confirmation_url }));
-      } catch (err) {
-        console.error('❌ Ошибка создания платежа ЮKassa:', err);
-        // Важно: отправляем ответ только один раз, и только если заголовки ещё не отправлены
-        if (!res.headersSent) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: err.message }));
-        } else {
-          // Если заголовки уже отправлены, просто завершаем ответ
-          res.end();
-        }
-      }
     });
     return;
   }
