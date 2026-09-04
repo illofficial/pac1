@@ -139,7 +139,7 @@ function fetchWithYoutubeMusicDownloader(videoId, res) {
 }
 
 const { v4: uuidv4 } = require('uuid');
-const YooKassa = require('yookassa');
+const YooKassa = require('@yookassa/sdk-node');
 
 const yooKassa = new YooKassa({
     shopId: process.env.YOOKASSA_SHOP_ID,
