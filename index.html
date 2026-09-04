@@ -2197,7 +2197,7 @@
   
     if (name === 'input') {
       const u = window.resetWeeklyIfNeededSafe(window.getUsageSafe());
-      const remaining = window.getRemainingSafe(u);
+      const remaining = window.getRemaining(u);
       const limit = FREE_LIMIT; // должно быть определено как 4
       const el = document.getElementById('trials-remaining');
       if (el) el.textContent = remaining;
@@ -2273,8 +2273,8 @@
   let loginMode = 'signin'; // 'signin' | 'signup'
 
   function showLoginScreen(){
-    let u = resetWeeklyIfNeededSafe(getUsageSafe());
-    const left = getRemainingSafe(u);
+    let u = resetWeeklyIfNeeded(getUsage());
+    const left = getRemaining(u);
     loginTrialsHint.innerHTML = 'You have <b>' + left + '</b> conversion' + (left !== 1 ? 's' : '') + ' left today.';
     loginError.classList.remove('show');
     loginEmail.value = '';
@@ -2288,8 +2288,8 @@
   window.showLoginScreen = showLoginScreen;
 
   function showPaywallScreen(){
-    let u = resetWeeklyIfNeededSafe(getUsageSafe());
-    const left = getRemainingSafe(u);
+    let u = resetWeeklyIfNeeded(getUsage());
+    const left = getRemaining(u);
     paywallTrialsHint.innerHTML = 'You have <b>' + left + '</b> conversion' + (left !== 1 ? 's' : '') + ' left today.';
     selectedPlan = null;
     paywallBtn.disabled = true;
@@ -2327,7 +2327,7 @@
       // Сохраняем токен в localStorage или в памяти
       localStorage.setItem('firebaseToken', idToken);
       // Обновляем usage
-      let u = resetWeeklyIfNeededSafe(getUsageSafe());
+      let u = resetWeeklyIfNeeded(getUsage());
       u.loggedIn = true;
       window.saveUsage(u);
       loginError.classList.remove('show');
@@ -2343,7 +2343,7 @@
   async function logout() {
     await signOut(auth);
     localStorage.removeItem('firebaseToken');
-    let u = resetWeeklyIfNeededSafe(getUsageSafe());
+    let u = resetWeeklyIfNeeded(getUsage());
     u.loggedIn = false;
     window.saveUsage(u);
     showScreen('input');
@@ -2888,7 +2888,7 @@
     }
   
     // Проверка подписки (если залогинен и есть подписка – пропускаем лимит)
-    const u = window.resetWeeklyIfNeededSafe(window.getUsageSafe());
+    const u = window.resetWeeklyIfNeeded(window.getUsage());
     let hasSubscription = false;
     if (u.loggedIn) {
       // Проверяем из localStorage или переменной (устанавливается в Firebase-модуле)
@@ -2896,7 +2896,7 @@
     }
   
     if (!hasSubscription) {
-      const remaining = getRemainingSafe(u);
+      const remaining = getRemaining(u);
       if (remaining <= 0) {
         // Если нет остатка – показываем paywall или логин
         if (u.loggedIn) {
@@ -3079,7 +3079,7 @@
 
       setTimeout(() => showScreen('win'), 450);
 
-      bumpUsageSafe(); // count this conversion toward daily limit
+      bumpUsage(); // count this conversion toward daily limit
 
     } catch(err){
       console.error(err);
@@ -3145,7 +3145,7 @@ if (currentPath === '/success') {
 } else {
   // Если пользователь не залогинен, показываем вход (можно оставить как есть)
   // Но чтобы не переопределять экран при загрузке, проверяем, активен ли экран входа
-  const u = window.getUsage ? window.getUsageSafe() : getUsageSafe();
+  const u = window.getUsage ? window.getUsage() : getUsage();
   if (!u.loggedIn) {
     // Если не залогинен и не на специальных экранах, показываем input
     // Но если уже на каком-то экране (например, login), не переключаем
@@ -3286,7 +3286,7 @@ if (currentPath === '/success') {
 
   function getUsageSafe() {
     if (typeof window.getUsage === 'function') {
-        return window.getUsageSafe();
+        return window.getUsage();
     }
     // Fallback: читаем localStorage напрямую
     try {
