@@ -2329,7 +2329,7 @@
       // Обновляем usage
       let u = resetWeeklyIfNeededSafe(getUsageSafe());
       u.loggedIn = true;
-      saveUsageSafe(u);
+      window.saveUsageSafe(u);
       loginError.classList.remove('show');
       // Показываем экран ввода
       showScreen('input');
@@ -2345,7 +2345,7 @@
     localStorage.removeItem('firebaseToken');
     let u = resetWeeklyIfNeededSafe(getUsageSafe());
     u.loggedIn = false;
-    saveUsageSafe(u);
+    window.saveUsageSafe(u);
     showScreen('input');
   }
 
@@ -3341,7 +3341,7 @@ if (currentPath === '/success') {
       // Fallback
       let u = resetWeeklyIfNeededSafe(getUsageSafe());
       u.used = (u.used || 0) + 1;
-      saveUsageSafe(u);
+      window.saveUsageSafe(u);
       return true;
   }
   
