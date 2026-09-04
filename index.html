@@ -2649,7 +2649,7 @@
   
       //const { checkoutUrl } = await response.json();
       // Перенаправляем на страницу оплаты Paddle
-      window.location.href = checkoutUrl;
+      window.location.href = data.checkoutUrl;
     } catch (err) {
       console.error('❌ Ошибка оплаты:', err);
       alert('Failed to start payment: ' + err.message);
