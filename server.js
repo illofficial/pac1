@@ -5,6 +5,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const admin = require('firebase-admin');
 const { Paddle, Environment } = require('@paddle/paddle-node-sdk');
+const crypto = require('crypto');
 
 const paddle = new Paddle(process.env.PADDLE_API_KEY, {
   environment: process.env.PADDLE_ENVIRONMENT === 'production' 
@@ -702,9 +703,8 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  const crypto = require('crypto');
 
-async function createYooKassaPayment(amount, description, returnUrl, metadata) {
+  async function createYooKassaPayment(amount, description, returnUrl, metadata) {
     const shopId = process.env.YOOKASSA_SHOP_ID;
     const secretKey = process.env.YOOKASSA_SECRET_KEY;
 
