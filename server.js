@@ -582,6 +582,7 @@ const server = http.createServer((req, res) => {
   }
 
   // 3. ✅ НОВЫЙ БЛОК ДЛЯ ВЕБХУКОВ PADDLE
+  // ----- Обработка вебхуков от Paddle (ручная проверка, правильная формула) -----
   if (req.method === 'POST' && url.pathname === '/api/webhooks/paddle') {
     let body = [];
     req.on('data', chunk => body.push(chunk));
@@ -631,12 +632,15 @@ const server = http.createServer((req, res) => {
         return;
       }
   
-      // Вычисляем ожидаемую подпись
+      // ✅ Правильная формула: HMAC-SHA256(secret, timestamp + ":" + requestBody)
       const crypto = require('crypto');
-      const expectedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(`${timestamp}:${secret}:${rawBodyString}`)
-        .digest('hex');
+      const hmac = crypto.createHmac('sha256', secret);
+      hmac.update(`${timestamp}:${rawBodyString}`);
+      const expectedSignature = hmac.digest('hex');
+  
+      // Для отладки (можно удалить после настройки)
+      console.log('🔍 Expected signature:', expectedSignature);
+      console.log('🔍 Received signature:', signature);
   
       // Сравниваем подписи (защита от timing attack)
       const isValid = crypto.timingSafeEqual(
@@ -658,7 +662,7 @@ const server = http.createServer((req, res) => {
         const event = JSON.parse(rawBodyString);
         console.log(`✅ Webhook event type: ${event.event_type}`);
   
-        // Обработка событий (аналогично предыдущему)
+        // Обработка событий
         switch (event.event_type) {
           case 'transaction.completed':
             await handleTransactionCompleted(event.data);
