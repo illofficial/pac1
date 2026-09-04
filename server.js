@@ -638,9 +638,9 @@ const server = http.createServer((req, res) => {
         console.log('DEBUG transaction:', JSON.stringify(transaction, null, 2));
         
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          checkoutUrl: transaction.checkout.url, // <-- вот так
-          transactionId: transaction.id // <-- нужно для overlay-окна
+        res.end(JSON.stringify({
+          transactionId: transaction.id,
+          checkoutUrl: transaction.checkout?.url || null,
         }));
   
         // res.writeHead(200, { 'Content-Type': 'application/json' });
