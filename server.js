@@ -138,6 +138,14 @@ function fetchWithYoutubeMusicDownloader(videoId, res) {
     req.end();
 }
 
+const { v4: uuidv4 } = require('uuid');
+const YooKassa = require('yookassa');
+
+const yooKassa = new YooKassa({
+    shopId: process.env.YOOKASSA_SHOP_ID,
+    secretKey: process.env.YOOKASSA_SECRET_KEY,
+});
+
 // --- Новая функция для скачивания через Tornado API ---
 async function fetchAudioViaTornadoApi(videoId, res) {
     const TORNADO_API_KEY = process.env.TORNADO_API_KEY;
@@ -617,14 +625,7 @@ const server = http.createServer((req, res) => {
         const idToken = authHeader.split('Bearer ')[1];
         const decodedToken = await admin.auth().verifyIdToken(idToken);
         const userId = decodedToken.uid;
-  
-        // Создаём транзакцию в Paddle
-        // const transaction = await paddle.transactions.create({
-        //   items: [{ priceId, quantity: 1 }],
-        //   //customerId: userId,
-        //   successUrl: 'https://pac111.onrender.com/success',  // замените на свой домен
-        //   cancelUrl: 'https://pac111.onrender.com/cancel',
-        // });
+
         const transaction = await paddle.transactions.create({
           items: [{ priceId, quantity: 1 }],
           customData: { userId }, // <-- обязательно, иначе не свяжешь оплату с юзером
@@ -655,6 +656,78 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/create-yookassa-payment') {
+      let body = [];
+      req.on('data', chunk => body.push(chunk));
+      req.on('end', async () => {
+          try {
+              const { amount, plan } = JSON.parse(Buffer.concat(body).toString());
+  
+              // Проверяем токен пользователя
+              const authHeader = req.headers.authorization;
+              if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                  throw new Error('Unauthorized');
+              }
+              const idToken = authHeader.split('Bearer ')[1];
+              const decodedToken = await admin.auth().verifyIdToken(idToken);
+              const userId = decodedToken.uid;
+  
+              const payment = await yooKassa.createPayment({
+                  amount: {
+                      value: amount,
+                      currency: 'RUB',
+                  },
+                  confirmation: {
+                      type: 'redirect',
+                      return_url: 'https://pac111.onrender.com/success', // после оплаты
+                  },
+                  capture: true,
+                  description: `Premium Audio Converter - ${plan} plan`,
+                  metadata: {
+                      userId: userId,
+                      plan: plan,
+                  },
+              });
+  
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ confirmationUrl: payment.confirmation.confirmation_url }));
+          } catch (err) {
+              console.error('❌ Ошибка создания платежа ЮKassa:', err);
+              res.writeHead(500);
+              res.end(JSON.stringify({ error: err.message }));
+          }
+      });
+      return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/yookassa-webhook') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+        try {
+            const event = JSON.parse(body);
+            if (event.object?.status === 'succeeded') {
+                const userId = event.object.metadata?.userId;
+                if (userId) {
+                    const userRef = admin.firestore().collection('users').doc(userId);
+                    await userRef.set({
+                        subscriptionStatus: 'active',
+                        updatedAt: new Date().toISOString(),
+                    }, { merge: true });
+                    console.log(`✅ Подписка активирована для ${userId} через ЮKassa`);
+                }
+            }
+            res.writeHead(200);
+            res.end('OK');
+        } catch (err) {
+            console.error('❌ Ошибка вебхука ЮKassa:', err);
+            res.writeHead(400);
+            res.end('Bad Request');
+        }
+    });
+    return;
+  }
+  
   if (req.method === 'GET' && url.pathname === '/api/paddle-token') {
     const clientToken = process.env.PADDLE_CLIENT_TOKEN;
     if (!clientToken) {
