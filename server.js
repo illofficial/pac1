@@ -38,67 +38,6 @@ async function verifyToken(req) {
   }
 }
 
-// ------ ЮKassa (прямые HTTP-запросы) ------
-async function createYooKassaPayment(amount, description, returnUrl, metadata) {
-    const shopId = process.env.YOOKASSA_SHOP_ID;
-    const secretKey = process.env.YOOKASSA_SECRET_KEY;
-
-    if (!shopId || !secretKey) {
-        throw new Error('YooKassa credentials not set');
-    }
-
-    const auth = Buffer.from(`${shopId}:${secretKey}`).toString('base64');
-    const data = JSON.stringify({
-        amount: {
-            value: amount,
-            currency: 'RUB',
-        },
-        confirmation: {
-            type: 'redirect',
-            return_url: returnUrl,
-        },
-        capture: true,
-        description: description,
-        metadata: metadata,
-    });
-
-    const options = {
-        hostname: 'api.yookassa.ru',
-        path: '/v3/payments',
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Basic ${auth}`,
-            'Content-Length': Buffer.byteLength(data),
-        },
-    };
-
-    return new Promise((resolve, reject) => {
-        const req = https.request(options, (res) => {
-            let body = '';
-            res.on('data', chunk => body += chunk);
-            res.on('end', () => {
-                try {
-                    const json = JSON.parse(body);
-                    // Проверяем статус ответа
-                    if (res.statusCode >= 400) {
-                        // Ищем текст ошибки
-                        const errorMsg = json.error?.description || json.description || `HTTP ${res.statusCode}: ${body}`;
-                        reject(new Error(errorMsg));
-                    } else {
-                        resolve(json);
-                    }
-                } catch (err) {
-                    reject(new Error(`Failed to parse YooKassa response: ${body}`));
-                }
-            });
-        });
-        req.on('error', reject);
-        req.write(data);
-        req.end();
-    });
-}
-
 const PORT = process.env.PORT || 80;
 const STATIC = __dirname;
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
@@ -763,7 +702,9 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  async function createYooKassaPayment(amount, description, returnUrl, metadata) {
+  const crypto = require('crypto');
+
+async function createYooKassaPayment(amount, description, returnUrl, metadata) {
     const shopId = process.env.YOOKASSA_SHOP_ID;
     const secretKey = process.env.YOOKASSA_SECRET_KEY;
 
@@ -772,6 +713,10 @@ const server = http.createServer((req, res) => {
     }
 
     const auth = Buffer.from(`${shopId}:${secretKey}`).toString('base64');
+    
+    // Генерируем уникальный idempotence key (например, UUID v4)
+    const idempotenceKey = crypto.randomUUID();
+
     const data = JSON.stringify({
         amount: {
             value: amount,
@@ -793,6 +738,7 @@ const server = http.createServer((req, res) => {
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Basic ${auth}`,
+            'Idempotence-Key': idempotenceKey,  // ← добавляем обязательный заголовок
             'Content-Length': Buffer.byteLength(data),
         },
     };
@@ -804,13 +750,14 @@ const server = http.createServer((req, res) => {
             res.on('end', () => {
                 try {
                     const json = JSON.parse(body);
-                    if (json.error) {
-                        reject(new Error(json.error.description || 'YooKassa error'));
+                    if (res.statusCode >= 400) {
+                        const errorMsg = json.error?.description || json.description || `HTTP ${res.statusCode}: ${body}`;
+                        reject(new Error(errorMsg));
                     } else {
                         resolve(json);
                     }
                 } catch (err) {
-                    reject(err);
+                    reject(new Error(`Failed to parse YooKassa response: ${body}`));
                 }
             });
         });
