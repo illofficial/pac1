@@ -841,6 +841,19 @@
     }
   };
 
+  window.addEventListener('load', () => {
+    if (!window.Paddle) {
+      console.error('Paddle.js не загрузился');
+      return;
+    }
+  
+    Paddle.Initialize({
+      token: 'live_ТВОЙ_CLIENT_SIDE_TOKEN',
+    });
+  
+    console.log('✅ Paddle initialized');
+  });
+  
   // Функция проверки подписки (принимает объект user)
   async function checkSubscription(user) {
     // Защита от null
@@ -983,6 +996,8 @@
 
   console.log('Firebase initialized with Firestore');
 </script>
+  
+<script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
   
 <script id="dsp-src">
 // mastering_chain.js (v3)
