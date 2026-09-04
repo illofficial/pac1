@@ -2631,8 +2631,8 @@
       
       if (data.checkoutUrl) {
         // ✅ Правильно: используем data.checkoutUrl
-        window.location.href = data.checkoutUrl;
-        // Или для новой вкладки: window.open(data.checkoutUrl, '_blank');
+        // window.location.href = data.checkoutUrl;
+        window.open(data.checkoutUrl, '_blank');
       } else {
         alert('Ошибка: ' + (data.error || 'не удалось создать платёжную ссылку'));
       }
