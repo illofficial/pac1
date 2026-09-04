@@ -843,16 +843,19 @@
   };
 
   window.addEventListener('load', async () => {
-    if (!window.Paddle) {
-      console.error('Paddle.js не загрузился');
+    // Убедимся, что Paddle загрузился
+    if (typeof Paddle === 'undefined') {
+      console.error('❌ Paddle.js не загрузился');
       return;
     }
-  
+
     try {
+      // Получаем клиентский токен с сервера
       const response = await fetch('/api/paddle-token');
       if (!response.ok) throw new Error('Failed to fetch token');
       const { token } = await response.json();
-      
+
+      // Инициализируем Paddle
       Paddle.Initialize({ token });
       console.log('✅ Paddle initialized with client token');
     } catch (err) {
