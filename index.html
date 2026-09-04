@@ -2246,7 +2246,7 @@
   function bumpUsage() {
     let u = window.resetWeeklyIfNeeded(window.getUsage());
     u.used = (u.used || 0) + 1;
-    window.saveUsage(u);
+    saveUsage(u);
     return true;
   }
 
@@ -2329,7 +2329,7 @@
       // Обновляем usage
       let u = resetWeeklyIfNeeded(getUsage());
       u.loggedIn = true;
-      window.saveUsage(u);
+      saveUsage(u);
       loginError.classList.remove('show');
       // Показываем экран ввода
       showScreen('input');
@@ -2345,7 +2345,7 @@
     localStorage.removeItem('firebaseToken');
     let u = resetWeeklyIfNeeded(getUsage());
     u.loggedIn = false;
-    window.saveUsage(u);
+    saveUsage(u);
     showScreen('input');
   }
 
@@ -3235,7 +3235,7 @@ if (currentPath === '/success') {
       localStorage.removeItem('firebaseToken');
       let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
       u.loggedIn = false;
-      window.saveUsage(u);
+      saveUsage(u);
       document.getElementById('user-modal').classList.remove('visible');
       window.showScreen('input');
     } catch (err) {
@@ -3254,7 +3254,7 @@ if (currentPath === '/success') {
       localStorage.removeItem('firebaseToken');
       let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
       u.loggedIn = false;
-      window.saveUsage(u);
+      saveUsage(u);
       document.getElementById('user-modal').classList.remove('visible');
       window.showScreen('input');
     } catch (err) {
@@ -3450,7 +3450,7 @@ if (currentPath === '/success') {
           : getUsage();
       
       u.loggedIn = true;
-      window.saveUsage(u);
+      saveUsage(u);
 
       updateUIForSubscription(hasSubscription);
 
@@ -3471,7 +3471,7 @@ if (currentPath === '/success') {
 
       let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
       u.loggedIn = false;
-      window.saveUsage(u);
+      saveUsage(u);
 
       const trialsContainer = document.getElementById('trials-remaining')?.closest('.remaining-hint');
       if (trialsContainer) trialsContainer.style.display = 'block';
