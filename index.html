@@ -2616,7 +2616,7 @@
         showLoginScreen();
         return;
       }
-  
+      
       const response = await fetch('/api/create-checkout', {
         method: 'POST',
         headers: {
@@ -2630,8 +2630,18 @@
         const error = await response.json();
         throw new Error(error.error || 'Failed to create checkout');
       }
+
+      const data = await response.json();
+      if (data.checkoutUrl) {
+        // Открыть в новой вкладке (обходит некоторые блокировки)
+        window.open(data.checkoutUrl, '_blank');
+        // или перенаправить текущую вкладку
+        // window.location.href = data.checkoutUrl;
+      } else {
+        alert('Ошибка: не удалось создать платёжную ссылку');
+      }
   
-      const { checkoutUrl } = await response.json();
+      //const { checkoutUrl } = await response.json();
       // Перенаправляем на страницу оплаты Paddle
       window.location.href = checkoutUrl;
     } catch (err) {
