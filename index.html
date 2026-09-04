@@ -813,7 +813,7 @@
     try {
       await auth.signOut();
       localStorage.removeItem('firebaseToken');
-      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
+      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeededSafe(window.getUsageSafe()) : window.getUsageSafe();
       u.loggedIn = false;
       window.saveUsage(u);
       document.getElementById('user-modal').classList.remove('visible');
@@ -832,7 +832,7 @@
       await user.delete();
       await setDoc(doc(db, 'users', user.uid), { deleted: true }, { merge: true });
       localStorage.removeItem('firebaseToken');
-      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
+      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeededSafe(window.getUsageSafe()) : window.getUsageSafe();
       u.loggedIn = false;
       window.saveUsage(u);
       document.getElementById('user-modal').classList.remove('visible');
@@ -863,6 +863,67 @@
       console.error('❌ Paddle init failed:', err);
     }
   });
+
+  function getUsageSafe() {
+    if (typeof window.getUsage === 'function') {
+        return window.getUsageSafe();
+    }
+    // Fallback: читаем localStorage напрямую
+    try {
+        const raw = localStorage.getItem('pac1_usage');
+        if (!raw) return { weekStart: '', used: 0, loggedIn: false };
+        return JSON.parse(raw);
+    } catch {
+        return { weekStart: '', used: 0, loggedIn: false };
+    }
+  }
+
+  function saveUsageSafe(u) {
+      if (typeof window.saveUsage === 'function') {
+          window.saveUsage(u);
+          return;
+      }
+      // Fallback: пишем в localStorage напрямую
+      try {
+          localStorage.setItem('pac1_usage', JSON.stringify(u));
+      } catch (e) {
+          console.error('Failed to save usage:', e);
+      }
+  }
+  
+  function resetWeeklyIfNeededSafe(u) {
+      if (typeof window.resetWeeklyIfNeeded === 'function') {
+          return window.resetWeeklyIfNeeded(u);
+      }
+      // Fallback: простая логика сброса
+      const now = new Date();
+      const weekStart = u.weekStart ? new Date(u.weekStart) : null;
+      if (!weekStart || (now - weekStart) >= 7 * 24 * 60 * 60 * 1000) {
+          u.weekStart = now.toISOString();
+          u.used = 0;
+      }
+      return u;
+  }
+  
+  function getRemainingSafe(u) {
+      if (typeof window.getRemaining === 'function') {
+          return window.getRemaining(u);
+      }
+      // Fallback
+      u = resetWeeklyIfNeededSafe(u);
+      return Math.max(0, 4 - (u.used || 0));
+  }
+  
+  function bumpUsageSafe() {
+      if (typeof window.bumpUsage === 'function') {
+          return window.bumpUsage();
+      }
+      // Fallback
+      let u = resetWeeklyIfNeededSafe(getUsageSafe());
+      u.used = (u.used || 0) + 1;
+      saveUsageSafe(u);
+      return true;
+  }
   
   // Функция проверки подписки (принимает объект user)
   async function checkSubscription(user) {
@@ -987,7 +1048,7 @@
       // Безопасное получение usage
       function getUsageSafe() {
           if (typeof window.getUsage === 'function') {
-              return window.getUsage();
+              return window.getUsageSafe();
           }
           // Fallback, если основной скрипт ещё не загрузился
           console.warn('window.getUsage not ready, using fallback');
@@ -999,7 +1060,7 @@
           ? window.resetWeeklyIfNeeded(getUsageSafe()) 
           : getUsageSafe();
       
-      //let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
+      //let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeededSafe(window.getUsageSafe()) : window.getUsageSafe();
       u.loggedIn = true;
       window.saveUsage(u);
 
@@ -1020,7 +1081,7 @@
 
       if (modal) modal.classList.remove('visible');
 
-      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
+      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeededSafe(window.getUsageSafe()) : window.getUsageSafe();
       u.loggedIn = false;
       window.saveUsage(u);
 
@@ -2501,7 +2562,7 @@
     screens[name].classList.add('active');
   
     if (name === 'input') {
-      const u = window.resetWeeklyIfNeeded(window.getUsage());
+      const u = window.resetWeeklyIfNeededSafe(window.getUsageSafe());
       const remaining = window.getRemaining(u);
       const limit = FREE_LIMIT; // должно быть определено как 4
       const el = document.getElementById('trials-remaining');
@@ -2549,17 +2610,17 @@
   }
   
   function bumpUsage() {
-    let u = window.resetWeeklyIfNeeded(window.getUsage());
+    let u = window.resetWeeklyIfNeededSafe(window.getUsageSafe());
     u.used = (u.used || 0) + 1;
     window.saveUsage(u);
     return true;
   }
 
-  window.getUsage = getUsage;
-  window.saveUsage = saveUsage;
-  window.resetWeeklyIfNeeded = resetWeeklyIfNeeded;
-  window.getRemaining = getRemaining;
-  window.bumpUsage = bumpUsage;
+  window.getUsage = getUsageSafe;  // чтобы другие места тоже работали
+  window.saveUsage = saveUsageSafe;
+  window.resetWeeklyIfNeeded = resetWeeklyIfNeededSafe;
+  window.getRemaining = getRemainingSafe;
+  window.bumpUsage = bumpUsageSafe;
   
   // ---------------- login / paywall UI ----------------
   const loginEmail = document.getElementById('login-email');
@@ -2578,7 +2639,7 @@
   let loginMode = 'signin'; // 'signin' | 'signup'
 
   function showLoginScreen(){
-    let u = resetWeeklyIfNeeded(getUsage());
+    let u = resetWeeklyIfNeededSafe(getUsageSafe());
     const left = getRemaining(u);
     loginTrialsHint.innerHTML = 'You have <b>' + left + '</b> conversion' + (left !== 1 ? 's' : '') + ' left today.';
     loginError.classList.remove('show');
@@ -2593,7 +2654,7 @@
   window.showLoginScreen = showLoginScreen;
 
   function showPaywallScreen(){
-    let u = resetWeeklyIfNeeded(getUsage());
+    let u = resetWeeklyIfNeededSafe(getUsageSafe());
     const left = getRemaining(u);
     paywallTrialsHint.innerHTML = 'You have <b>' + left + '</b> conversion' + (left !== 1 ? 's' : '') + ' left today.';
     selectedPlan = null;
@@ -2632,7 +2693,7 @@
       // Сохраняем токен в localStorage или в памяти
       localStorage.setItem('firebaseToken', idToken);
       // Обновляем usage
-      let u = resetWeeklyIfNeeded(getUsage());
+      let u = resetWeeklyIfNeededSafe(getUsageSafe());
       u.loggedIn = true;
       saveUsage(u);
       loginError.classList.remove('show');
@@ -2648,7 +2709,7 @@
   async function logout() {
     await signOut(auth);
     localStorage.removeItem('firebaseToken');
-    let u = resetWeeklyIfNeeded(getUsage());
+    let u = resetWeeklyIfNeededSafe(getUsageSafe());
     u.loggedIn = false;
     saveUsage(u);
     showScreen('input');
@@ -3193,7 +3254,7 @@
     }
   
     // Проверка подписки (если залогинен и есть подписка – пропускаем лимит)
-    const u = window.resetWeeklyIfNeeded(window.getUsage());
+    const u = window.resetWeeklyIfNeededSafe(window.getUsageSafe());
     let hasSubscription = false;
     if (u.loggedIn) {
       // Проверяем из localStorage или переменной (устанавливается в Firebase-модуле)
@@ -3450,7 +3511,7 @@ if (currentPath === '/success') {
 } else {
   // Если пользователь не залогинен, показываем вход (можно оставить как есть)
   // Но чтобы не переопределять экран при загрузке, проверяем, активен ли экран входа
-  const u = window.getUsage ? window.getUsage() : getUsage();
+  const u = window.getUsage ? window.getUsageSafe() : getUsageSafe();
   if (!u.loggedIn) {
     // Если не залогинен и не на специальных экранах, показываем input
     // Но если уже на каком-то экране (например, login), не переключаем
