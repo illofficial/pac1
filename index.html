@@ -2666,17 +2666,17 @@
     paywallBtn.textContent = 'SUBSCRIBE — ' + card.querySelector('.plan-price').textContent;
   });
 
-  paywallBtn.addEventListener('click', () => {
-    if (!selectedPlan) return;
-    // Stripe / payment gateway will be plugged in here.
-    // For now, simulate success: grant unlimited for this session.
-    let u = resetWeeklyIfNeeded(getUsage());
-    u.loggedIn = true;
-    u.freeUsed = 0;
-    u.loginUsed = 0;
-    saveUsage(u);
-    showScreen('input');
-  });
+  // paywallBtn.addEventListener('click', () => {
+  //   if (!selectedPlan) return;
+  //   // Stripe / payment gateway will be plugged in here.
+  //   // For now, simulate success: grant unlimited for this session.
+  //   let u = resetWeeklyIfNeeded(getUsage());
+  //   u.loggedIn = true;
+  //   u.freeUsed = 0;
+  //   u.loginUsed = 0;
+  //   saveUsage(u);
+  //   showScreen('input');
+  // });
 
   document.getElementById('success-back-btn').addEventListener('click', () => {
     // Переходим на главный экран и обновляем статус подписки
