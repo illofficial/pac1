@@ -3,8 +3,7 @@
   "version": "1.0.0",
   "dependencies": {
     "firebase-admin": "^12.0.0",
-    "@paddle/paddle-node-sdk": "^1.3.0",
-    "@yookassa/sdk-node": "^1.0.0"
+    "@paddle/paddle-node-sdk": "^1.3.0"
   }
 }
 
