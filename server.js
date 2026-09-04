@@ -654,6 +654,17 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+
+  if (req.method === 'GET' && url.pathname === '/api/paddle-token') {
+    const clientToken = process.env.PADDLE_CLIENT_TOKEN;
+    if (!clientToken) {
+      res.writeHead(500);
+      return res.end(JSON.stringify({ error: 'Client token not set' }));
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ token: clientToken }));
+    return;
+  }
   
   // 3. ✅ НОВЫЙ БЛОК ДЛЯ ВЕБХУКОВ PADDLE
   // ----- Обработка вебхуков от Paddle (ручная проверка, правильная формула) -----
