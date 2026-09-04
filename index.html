@@ -2244,17 +2244,17 @@
   }
   
   function bumpUsage() {
-    let u = window.resetWeeklyIfNeededSafe(window.getUsageSafe());
+    let u = window.resetWeeklyIfNeeded(window.getUsage());
     u.used = (u.used || 0) + 1;
     window.saveUsage(u);
     return true;
   }
 
-  window.getUsage = getUsageSafe;  // чтобы другие места тоже работали
-  window.saveUsage = saveUsageSafe;
-  window.resetWeeklyIfNeeded = resetWeeklyIfNeededSafe;
-  window.getRemaining = getRemainingSafe;
-  window.bumpUsage = bumpUsageSafe;
+  window.getUsage = getUsage;  // чтобы другие места тоже работали
+  window.saveUsage = saveUsage;
+  window.resetWeeklyIfNeeded = resetWeeklyIfNeeded;
+  window.getRemaining = getRemaining;
+  window.bumpUsage = bumpUsage;
   
   // ---------------- login / paywall UI ----------------
   const loginEmail = document.getElementById('login-email');
@@ -3233,7 +3233,7 @@ if (currentPath === '/success') {
     try {
       await auth.signOut();
       localStorage.removeItem('firebaseToken');
-      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeededSafe(window.getUsageSafe()) : window.getUsageSafe();
+      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
       u.loggedIn = false;
       window.saveUsage(u);
       document.getElementById('user-modal').classList.remove('visible');
@@ -3252,7 +3252,7 @@ if (currentPath === '/success') {
       await user.delete();
       await setDoc(doc(db, 'users', user.uid), { deleted: true }, { merge: true });
       localStorage.removeItem('firebaseToken');
-      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeededSafe(window.getUsageSafe()) : window.getUsageSafe();
+      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
       u.loggedIn = false;
       window.saveUsage(u);
       document.getElementById('user-modal').classList.remove('visible');
@@ -3477,7 +3477,7 @@ if (currentPath === '/success') {
       
       // Теперь используем её
       let u = window.resetWeeklyIfNeeded 
-          ? window.resetWeeklyIfNeeded(getUsageSafe()) 
+          ? window.resetWeeklyIfNeeded(getUsage()) 
           : getUsageSafe();
       
       //let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeededSafe(window.getUsageSafe()) : window.getUsageSafe();
@@ -3501,7 +3501,7 @@ if (currentPath === '/success') {
 
       if (modal) modal.classList.remove('visible');
 
-      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeededSafe(window.getUsageSafe()) : window.getUsageSafe();
+      let u = window.resetWeeklyIfNeeded ? window.resetWeeklyIfNeeded(window.getUsage()) : window.getUsage();
       u.loggedIn = false;
       window.saveUsage(u);
 
