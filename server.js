@@ -42,17 +42,26 @@ async function verifyToken(req) {
 async function createYooKassaPayment(amount, description, returnUrl, metadata) {
     const shopId = process.env.YOOKASSA_SHOP_ID;
     const secretKey = process.env.YOOKASSA_SECRET_KEY;
+
     if (!shopId || !secretKey) {
         throw new Error('YooKassa credentials not set');
     }
+
     const auth = Buffer.from(`${shopId}:${secretKey}`).toString('base64');
     const data = JSON.stringify({
-        amount: { value: amount, currency: 'RUB' },
-        confirmation: { type: 'redirect', return_url: returnUrl },
+        amount: {
+            value: amount,
+            currency: 'RUB',
+        },
+        confirmation: {
+            type: 'redirect',
+            return_url: returnUrl,
+        },
         capture: true,
-        description,
-        metadata,
+        description: description,
+        metadata: metadata,
     });
+
     const options = {
         hostname: 'api.yookassa.ru',
         path: '/v3/payments',
@@ -63,6 +72,7 @@ async function createYooKassaPayment(amount, description, returnUrl, metadata) {
             'Content-Length': Buffer.byteLength(data),
         },
     };
+
     return new Promise((resolve, reject) => {
         const req = https.request(options, (res) => {
             let body = '';
@@ -70,6 +80,7 @@ async function createYooKassaPayment(amount, description, returnUrl, metadata) {
             res.on('end', () => {
                 try {
                     const json = JSON.parse(body);
+                    // Если есть поле error — значит ошибка
                     if (json.error) {
                         reject(new Error(json.error.description || 'YooKassa error'));
                     } else {
