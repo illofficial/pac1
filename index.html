@@ -2368,7 +2368,7 @@
     }
 
     // Определяем, какой провайдер использовать
-    const useYooKassa = true; //await shouldUseYooKassa();
+    const useYooKassa = await shouldUseYooKassa(); //true; 
 
     if (useYooKassa) {
         // --- Российский пользователь → ЮKassa ---
