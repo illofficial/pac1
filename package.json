@@ -2,6 +2,8 @@
   "name": "pac1",
   "version": "1.0.0",
   "dependencies": {
-    "firebase-admin": "^12.0.0"
+    "firebase-admin": "^12.0.0",
+    "@paddle/paddle-node-sdk": "^1.3.0"
   }
 }
+
